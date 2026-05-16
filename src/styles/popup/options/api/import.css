@@ -1,0 +1,64 @@
+/* =================================
+   IMPORT MODAL
+   ================================= */
+
+@utility custom-api-import-modal {
+	@apply flex flex-col;
+	gap: 0.875rem;
+}
+
+@utility import-form-group {
+	@apply flex flex-col;
+	gap: 0.3125rem;
+}
+
+@utility import-label {
+	@apply text-xs font-medium;
+	color: var(--color-text);
+}
+
+@utility import-textarea {
+	@apply text-sm-plus rounded-sm inline-full;
+	padding: 0.5rem 0.625rem;
+	font-family: inherit;
+	color: var(--color-text);
+	background-color: var(--color-bg-content);
+	border: 1px solid var(--color-border-subtle);
+	resize: vertical;
+	min-height: 7.5rem;
+	line-height: 1.5;
+	transition: border-color 0.15s ease;
+
+	&::placeholder {
+		color: var(--color-placeholder);
+	}
+
+	&:hover:not(:focus) {
+		border-color: var(--color-border);
+	}
+
+	&:focus {
+		@apply outline-none;
+		border-color: var(--color-primary);
+	}
+}
+
+@utility import-divider {
+	@apply flex items-center;
+	gap: 0.625rem;
+	color: var(--color-text-tertiary);
+
+	&::before,
+	&::after {
+		content: '';
+
+		@apply flex-1 block-px;
+		background-color: var(--color-border-subtle);
+	}
+}
+
+@utility import-divider-label {
+	@apply text-2xs font-medium uppercase;
+	letter-spacing: 0.08em;
+	color: var(--color-text-tertiary);
+}

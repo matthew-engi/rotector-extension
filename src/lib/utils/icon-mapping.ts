@@ -1,6 +1,3 @@
-/**
- * Type definitions for icon names used throughout the application
- */
 export type StatusIconName =
 	| 'safe'
 	| 'unsafe'
@@ -8,9 +5,12 @@ export type StatusIconName =
 	| 'queued'
 	| 'error'
 	| 'loading'
-	| 'integration'
+	| 'provisional'
 	| 'checking'
 	| 'past-offender'
 	| 'mixed'
+	| 'redacted'
 	| 'restricted'
-	| 'outfit';
+	| 'outfit'
+	| 'integration'
+	| 'unknown';

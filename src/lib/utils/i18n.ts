@@ -1,6 +1,7 @@
 import { getAssetUrl } from './assets';
 import { SETTINGS_KEYS } from '../types/settings';
-import { logger } from './logger';
+import { logger } from './logging/logger';
+import { getStorage, subscribeStorageKey } from './storage';
 
 export const SUPPORTED_LOCALES = [
 	'en',
@@ -31,7 +32,16 @@ export const SUPPORTED_LOCALES = [
 
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
-// Display names for locale picker
+export const RTL_LOCALES: ReadonlySet<string> = new Set<SupportedLocale>(['ar']);
+
+export const NO_WORD_BREAK_LOCALES: ReadonlySet<string> = new Set<SupportedLocale>([
+	'zh-CN',
+	'zh-TW',
+	'ja',
+	'ko',
+	'th'
+]);
+
 export const LOCALE_DISPLAY_NAMES: Record<SupportedLocale, string> = {
 	en: 'English',
 	ar: 'العربية',
@@ -59,7 +69,7 @@ export const LOCALE_DISPLAY_NAMES: Record<SupportedLocale, string> = {
 	'zh-TW': '繁體中文'
 };
 
-// Normalize browser locale to supported BCP 47 format
+// Maps zh variants to TW or CN, falls back to base tag, or 'en' when nothing matches
 export function normalizeLocale(browserLocale: string): SupportedLocale {
 	if (SUPPORTED_LOCALES.includes(browserLocale as SupportedLocale)) {
 		return browserLocale as SupportedLocale;
@@ -81,30 +91,32 @@ export function normalizeLocale(browserLocale: string): SupportedLocale {
 	return 'en';
 }
 
-// Get current locale from storage or browser
 async function getCurrentLocale(): Promise<SupportedLocale> {
 	try {
-		const stored = await browser.storage.sync.get(SETTINGS_KEYS.LANGUAGE_OVERRIDE);
-		const storedLocale = stored[SETTINGS_KEYS.LANGUAGE_OVERRIDE] as string | undefined;
+		const storedLocale = await getStorage<string | undefined>(
+			'sync',
+			SETTINGS_KEYS.LANGUAGE_OVERRIDE,
+			undefined
+		);
 
 		if (storedLocale && storedLocale !== 'auto') {
 			return normalizeLocale(storedLocale);
 		}
 
-		const browserLocale = navigator.language ?? 'en';
+		const browserLocale = navigator.language;
 		return normalizeLocale(browserLocale);
 	} catch {
 		return 'en';
 	}
 }
 
-// Load messages for a locale
-export async function loadLocaleMessages(locale: string): Promise<Record<string, string>> {
+// Falls back to en on fetch failure, returns empty object only when en itself fails
+export async function loadLocaleMessages(locale: SupportedLocale): Promise<Record<string, string>> {
 	try {
-		const url = getAssetUrl(`locales/${locale}/messages.json`);
+		const url = getAssetUrl(`/locales/${locale}/messages.json`);
 		const response = await fetch(url);
 		if (!response.ok) {
-			throw new Error(`HTTP ${response.status}`);
+			throw new Error(`HTTP ${String(response.status)}`);
 		}
 		return (await response.json()) as Record<string, string>;
 	} catch (error) {
@@ -120,6 +132,7 @@ export async function loadLocaleMessages(locale: string): Promise<Record<string,
 let cachedMessages: Record<string, string> | null = null;
 let cachedLocale: string | null = null;
 
+// Returns the key itself when the message is missing so the UI never shows undefined
 export async function t(key: string, params?: Record<string, string | number>): Promise<string> {
 	const locale = await getCurrentLocale();
 
@@ -132,17 +145,14 @@ export async function t(key: string, params?: Record<string, string | number>): 
 
 	if (params) {
 		for (const [paramKey, value] of Object.entries(params)) {
-			message = message.replace(new RegExp(`\\{${paramKey}\\}`, 'g'), String(value));
+			message = message.replaceAll(new RegExp(String.raw`\{${paramKey}\}`, 'g'), String(value));
 		}
 	}
 
 	return message;
 }
 
-// Invalidate cache when language changes
-browser.storage.onChanged.addListener((changes, namespace) => {
-	if (namespace === 'sync' && changes[SETTINGS_KEYS.LANGUAGE_OVERRIDE]) {
-		cachedMessages = null;
-		cachedLocale = null;
-	}
+subscribeStorageKey<string>('sync', SETTINGS_KEYS.LANGUAGE_OVERRIDE, () => {
+	cachedMessages = null;
+	cachedLocale = null;
 });

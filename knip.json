@@ -4,12 +4,14 @@
 		"src/entrypoints/background/index.ts",
 		"src/entrypoints/content.ts",
 		"src/entrypoints/roscoe-bridge.content.ts",
-		"src/entrypoints/popup/main.ts"
+		"src/entrypoints/popup/main.ts",
+		"src/entrypoints/options/main.ts",
+		"src/components/popup/developer/PerformanceDashboard.svelte",
+		"src/components/popup/options/api/CustomApiDocumentation.svelte"
 	],
 	"project": ["src/**/*.{ts,svelte}", "!src/**/*.d.ts"],
 	"ignoreDependencies": [
-		"@tailwindcss/vite",
-		"@wxt-dev/module-svelte",
+		"@typescript/native-preview",
 		"dotenv",
 		"lightningcss",
 		"tslib",

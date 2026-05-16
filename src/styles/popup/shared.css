@@ -1,0 +1,32 @@
+/* =================================
+   SHARED UTILITIES
+   ================================= */
+
+@utility popup-section {
+	@apply flex flex-col gap-2 py-1;
+}
+
+@utility popup-section-head {
+	@apply flex items-baseline justify-between gap-2;
+}
+
+@utility popup-section-title {
+	@apply text-2xs m-0 font-semibold uppercase;
+	letter-spacing: 0.08em;
+	color: var(--color-text-subtle);
+}
+
+@utility popup-section-status {
+	@apply text-xs-plus font-medium;
+	color: var(--color-text-tertiary);
+}
+
+@utility popup-section-body {
+	@apply flex flex-col gap-1;
+}
+
+@utility popup-divider {
+	@apply my-2 shrink-0;
+	height: 1px;
+	background-color: var(--color-border-subtle);
+}

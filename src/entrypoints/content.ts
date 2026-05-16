@@ -3,32 +3,45 @@ import { mount } from 'svelte';
 import { get } from 'svelte/store';
 import { createShadowRootUi } from 'wxt/utils/content-script-ui/shadow-root';
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
-import { logger } from '@/lib/utils/logger';
+import { logger } from '@/lib/utils/logging/logger';
 import { PageControllerManager } from '@/lib/controllers/PageControllerManager';
-import { registerPortalContainer, themeManager } from '@/lib/utils/theme';
-import { initializeSettings, settings } from '@/lib/stores/settings';
-import { SETTINGS_KEYS } from '@/lib/types/settings';
+import { themeManager } from '@/lib/utils/theme';
+import { initializeSettings } from '@/lib/stores/settings';
+import { extensionFeaturesEnabled } from '@/lib/stores/legal';
 import { loadStoredLanguagePreference } from '@/lib/stores/i18n';
 import { loadCustomApis } from '@/lib/stores/custom-apis';
 import {
 	initializeRestrictedAccess,
 	setupRestrictedAccessListener
 } from '@/lib/stores/restricted-access';
-import { injectBlurStyles, injectDefaultBlurStyles } from '@/lib/services/blur-service';
-import { metricsCollector } from '@/lib/utils/metrics-collector';
-import { setOverlayContainer } from '@/lib/stores/overlay';
+import { injectBlurStyles, injectDefaultBlurStyles } from '@/lib/services/blur/service';
+import { metricsCollector } from '@/lib/utils/logging/metrics-collector';
+import { registerOverlayContainer } from '@/lib/utils/overlay-portal-registry';
 import OverlayRoot from '@/components/overlay/OverlayRoot.svelte';
 
-/**
- * Wait for document.body to exist.
- */
+async function registerBuilderSans(): Promise<void> {
+	try {
+		const url = browser.runtime.getURL(
+			'/fonts/builder-sans/BuilderSans.woff2' as Parameters<typeof browser.runtime.getURL>[0]
+		);
+		const face = new FontFace('Builder Sans', `url("${url}")`, { weight: '400' });
+		await face.load();
+		document.fonts.add(face);
+	} catch (error) {
+		logger.warn('Builder Sans font registration failed; falling back to system font', error);
+	}
+}
+
 async function waitForBody(): Promise<HTMLElement> {
 	return new Promise((resolve) => {
+		// document.body is typed as non-null but can be null before DOM loads
+		// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- document.body is typed non-null but is null at document_start before DOM parse
 		if (document.body) {
 			resolve(document.body);
 			return;
 		}
 		const observer = new MutationObserver(() => {
+			// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- document.body is typed non-null but is null at document_start before DOM parse
 			if (document.body) {
 				observer.disconnect();
 				resolve(document.body);
@@ -99,7 +112,6 @@ export default defineContentScript({
 			await initializeSettings();
 			logger.debug('Settings loaded successfully');
 
-			// Inject blur styles based on settings
 			injectBlurStyles();
 			logger.debug('Blur styles injected');
 
@@ -112,35 +124,36 @@ export default defineContentScript({
 			setupRestrictedAccessListener();
 			logger.debug('Access state initialized');
 
-			// Wait for body to exist before DOM operations
 			await waitForBody();
 
-			// Initialize Roblox theme detection
+			// Register Builder Sans against document.fonts. WXT moves @font-face rules
+			// into document.head where relative URLs resolve against the page origin
+			// and 404; the FontFace API takes the explicit extension URL.
+			void registerBuilderSans();
+
 			themeManager.initializeRobloxTheme();
 
-			// Load content script CSS for injection into the shadow root
 			const cssUrl = browser.runtime.getURL(
 				'/content-scripts/content.css' as Parameters<typeof browser.runtime.getURL>[0]
 			);
 			const cssResponse = await fetch(cssUrl);
-			const rawCss = await cssResponse.text();
-			const cssText = rawCss.split(':root').join(':host');
+			const shadowCssRaw = await cssResponse.text();
+			const cssText = shadowCssRaw.replaceAll(':root', ':host');
 
-			// Create shadow root for overlay UI
 			const ui = await createShadowRootUi(ctx, {
 				name: 'rotector-overlay',
 				position: 'overlay',
-				zIndex: 10000,
+				zIndex: 10_000,
 				css: cssText,
 				onMount(uiContainer, _shadow, shadowHost) {
-					setOverlayContainer(uiContainer);
-					registerPortalContainer(shadowHost);
+					registerOverlayContainer(uiContainer);
+					themeManager.registerPortalContainer(shadowHost);
 
 					// Register inner html element so [data-theme] CSS selectors
 					// match inside the shadow root (bare attribute selectors
 					// don't match the shadow host from within shadow CSS)
 					const shadowHtml = _shadow.querySelector('html');
-					if (shadowHtml) registerPortalContainer(shadowHtml as HTMLElement);
+					if (shadowHtml) themeManager.registerPortalContainer(shadowHtml);
 
 					mount(OverlayRoot, { target: uiContainer });
 					logger.debug('Shadow root overlay mounted');
@@ -152,66 +165,55 @@ export default defineContentScript({
 			});
 			ui.mount();
 
-			// Track initialization state
 			let pageManagerInitialized = false;
 
 			function initializePageHandling() {
 				if (pageManagerInitialized) return;
 				pageManagerInitialized = true;
 
-				// Initialize page controller manager
 				const pageManager = new PageControllerManager();
-				pageManager.initialize();
 				logger.debug('Page controller manager initialized');
 
-				// Start metrics collection in dev mode
 				metricsCollector.start();
 
-				// Handle page navigation changes
-				let currentUrl = window.location.href;
+				let currentUrl = globalThis.location.href;
 				const checkForNavigation = () => {
-					if (window.location.href !== currentUrl) {
-						currentUrl = window.location.href;
+					if (globalThis.location.href !== currentUrl) {
+						currentUrl = globalThis.location.href;
 						logger.debug('Navigation detected', {
 							newUrl: currentUrl,
-							pathname: window.location.pathname,
-							hash: window.location.hash
+							pathname: globalThis.location.pathname,
+							hash: globalThis.location.hash
 						});
 						void pageManager.handleNavigation(currentUrl);
 					}
 				};
 
-				// Listen for browser navigation events
-				window.addEventListener('popstate', () => {
+				globalThis.addEventListener('popstate', () => {
 					logger.debug('Popstate event detected');
 					checkForNavigation();
 				});
 
-				window.addEventListener('hashchange', () => {
-					logger.debug('Hash change detected', { hash: window.location.hash });
+				globalThis.addEventListener('hashchange', () => {
+					logger.debug('Hash change detected', { hash: globalThis.location.hash });
 					checkForNavigation();
 				});
 
-				// Initial page detection and setup
 				void pageManager.handleNavigation(currentUrl);
 			}
 
-			// Initialize page handling based on onboarding status
-			const currentSettings = get(settings);
-			if (currentSettings[SETTINGS_KEYS.ONBOARDING_COMPLETED]) {
+			if (get(extensionFeaturesEnabled)) {
 				initializePageHandling();
 			} else {
-				// Subscribe to settings changes to initialize after onboarding completes
-				const unsubscribe = settings.subscribe((s) => {
-					if (s[SETTINGS_KEYS.ONBOARDING_COMPLETED]) {
+				const unsubscribe = extensionFeaturesEnabled.subscribe((enabled) => {
+					if (enabled) {
 						initializePageHandling();
 						unsubscribe();
 					}
 				});
-				logger.debug('Waiting for onboarding completion to initialize page controllers');
+				logger.debug('Waiting for onboarding + legal acceptance to initialize page controllers');
 			}
 
-			// Set up cleanup on page unload
 			window.addEventListener('beforeunload', () => {
 				logger.debug('Content script cleanup on page unload');
 				metricsCollector.stop();

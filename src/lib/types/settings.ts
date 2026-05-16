@@ -1,5 +1,3 @@
-import { CHANGELOGS } from './changelog.js';
-
 export const SETTINGS_KEYS = {
 	HOME_CHECK_ENABLED: 'homeCheckEnabled',
 	PROFILE_CHECK_ENABLED: 'profileCheckEnabled',
@@ -12,7 +10,6 @@ export const SETTINGS_KEYS = {
 	API_KEY: 'apiKey',
 	SETTINGS_EXPANDED: 'settingsExpanded',
 	CACHE_DURATION_MINUTES: 'cacheDurationMinutes',
-	DEVELOPER_MODE_UNLOCKED: 'developerModeUnlocked',
 	THEME: 'theme',
 	LANGUAGE_OVERRIDE: 'languageOverride',
 	CHANGELOG_SECTION_EXPANDED: 'changelogSectionExpanded',
@@ -21,6 +18,7 @@ export const SETTINGS_KEYS = {
 	CUSTOM_APIS: 'customApis',
 	LAST_SELECTED_CUSTOM_API_TAB: 'lastSelectedCustomApiTab',
 	TRANSLATE_VIOLATIONS_ENABLED: 'translateViolationsEnabled',
+	CIPHER_DECODING_ENABLED: 'cipherDecodingEnabled',
 	ONBOARDING_COMPLETED: 'onboardingCompleted',
 	BLUR_DISPLAY_NAMES: 'blurDisplayNames',
 	BLUR_USERNAMES: 'blurUsernames',
@@ -31,7 +29,12 @@ export const SETTINGS_KEYS = {
 	EXPANDED_TOOLTIP_HEIGHT: 'expandedTooltipHeight',
 	PREVIEW_TOOLTIP_WIDTH: 'previewTooltipWidth',
 	PREVIEW_TOOLTIP_HEIGHT: 'previewTooltipHeight',
-	EXPANDED_HEADER_HEIGHT: 'expandedHeaderHeight'
+	EXPANDED_HEADER_HEIGHT: 'expandedHeaderHeight',
+	INFO_POPOVER_HINTS_SEEN: 'infoPopoverHintsSeen',
+	LEGAL_ACCEPTED_VERSION: 'legalAcceptedVersion',
+	LEGAL_DECLINED: 'legalDeclined',
+	FIRST_DETECTION_SEEN: 'firstDetectionSeen',
+	RESTRICTION_NOTICE_SEEN_TIMESTAMP: 'restrictionNoticeSeenTimestamp'
 } as const;
 
 export type SettingsKey = (typeof SETTINGS_KEYS)[keyof typeof SETTINGS_KEYS];
@@ -58,7 +61,6 @@ export interface Settings {
 	[SETTINGS_KEYS.API_KEY]: string;
 	[SETTINGS_KEYS.SETTINGS_EXPANDED]: boolean;
 	[SETTINGS_KEYS.CACHE_DURATION_MINUTES]: number;
-	[SETTINGS_KEYS.DEVELOPER_MODE_UNLOCKED]: boolean;
 	[SETTINGS_KEYS.THEME]: Theme;
 	[SETTINGS_KEYS.LANGUAGE_OVERRIDE]: string;
 	[SETTINGS_KEYS.CHANGELOG_SECTION_EXPANDED]: boolean;
@@ -67,6 +69,7 @@ export interface Settings {
 	[SETTINGS_KEYS.CUSTOM_APIS]?: string;
 	[SETTINGS_KEYS.LAST_SELECTED_CUSTOM_API_TAB]?: string;
 	[SETTINGS_KEYS.TRANSLATE_VIOLATIONS_ENABLED]: boolean;
+	[SETTINGS_KEYS.CIPHER_DECODING_ENABLED]: boolean;
 	[SETTINGS_KEYS.ONBOARDING_COMPLETED]: boolean;
 	[SETTINGS_KEYS.BLUR_DISPLAY_NAMES]: boolean;
 	[SETTINGS_KEYS.BLUR_USERNAMES]: boolean;
@@ -78,6 +81,11 @@ export interface Settings {
 	[SETTINGS_KEYS.PREVIEW_TOOLTIP_WIDTH]?: number;
 	[SETTINGS_KEYS.PREVIEW_TOOLTIP_HEIGHT]?: number;
 	[SETTINGS_KEYS.EXPANDED_HEADER_HEIGHT]?: number;
+	[SETTINGS_KEYS.INFO_POPOVER_HINTS_SEEN]: string[];
+	[SETTINGS_KEYS.LEGAL_ACCEPTED_VERSION]: string;
+	[SETTINGS_KEYS.LEGAL_DECLINED]: boolean;
+	[SETTINGS_KEYS.FIRST_DETECTION_SEEN]: boolean;
+	[SETTINGS_KEYS.RESTRICTION_NOTICE_SEEN_TIMESTAMP]: number;
 }
 
 export const SETTINGS_DEFAULTS: Settings = {
@@ -92,19 +100,24 @@ export const SETTINGS_DEFAULTS: Settings = {
 	[SETTINGS_KEYS.API_KEY]: '',
 	[SETTINGS_KEYS.SETTINGS_EXPANDED]: false,
 	[SETTINGS_KEYS.CACHE_DURATION_MINUTES]: 5,
-	[SETTINGS_KEYS.DEVELOPER_MODE_UNLOCKED]: false,
 	[SETTINGS_KEYS.THEME]: 'auto',
 	[SETTINGS_KEYS.LANGUAGE_OVERRIDE]: 'auto',
 	[SETTINGS_KEYS.CHANGELOG_SECTION_EXPANDED]: false,
-	[SETTINGS_KEYS.CHANGELOG_LAST_SEEN_VERSION]: CHANGELOGS[1]?.version ?? '',
+	[SETTINGS_KEYS.CHANGELOG_LAST_SEEN_VERSION]: '',
 	[SETTINGS_KEYS.CHANGELOG_MODAL_DISABLED]: false,
 	[SETTINGS_KEYS.TRANSLATE_VIOLATIONS_ENABLED]: false,
+	[SETTINGS_KEYS.CIPHER_DECODING_ENABLED]: true,
 	[SETTINGS_KEYS.ONBOARDING_COMPLETED]: false,
 	[SETTINGS_KEYS.BLUR_DISPLAY_NAMES]: false,
 	[SETTINGS_KEYS.BLUR_USERNAMES]: false,
 	[SETTINGS_KEYS.BLUR_DESCRIPTIONS]: false,
 	[SETTINGS_KEYS.BLUR_AVATARS]: false,
-	[SETTINGS_KEYS.EXPERIMENTAL_CUSTOM_APIS_ENABLED]: false
+	[SETTINGS_KEYS.EXPERIMENTAL_CUSTOM_APIS_ENABLED]: false,
+	[SETTINGS_KEYS.INFO_POPOVER_HINTS_SEEN]: [],
+	[SETTINGS_KEYS.LEGAL_ACCEPTED_VERSION]: '',
+	[SETTINGS_KEYS.LEGAL_DECLINED]: false,
+	[SETTINGS_KEYS.FIRST_DETECTION_SEEN]: false,
+	[SETTINGS_KEYS.RESTRICTION_NOTICE_SEEN_TIMESTAMP]: 0
 };
 
 interface SettingCategory {
@@ -114,7 +127,6 @@ interface SettingCategory {
 		key: SettingsKey;
 		labelKey: string;
 		helpTextKey?: string;
-		requiresConfirmation?: boolean;
 	}>;
 }
 
@@ -133,15 +145,14 @@ export const SETTING_CATEGORIES: SettingCategory[] = [
 				helpTextKey: 'settings_help_language'
 			},
 			{
-				key: SETTINGS_KEYS.ADVANCED_VIOLATION_INFO_ENABLED,
-				labelKey: 'settings_label_advanced_violations',
-				helpTextKey: 'settings_help_advanced_violations',
-				requiresConfirmation: true
-			},
-			{
 				key: SETTINGS_KEYS.TRANSLATE_VIOLATIONS_ENABLED,
 				labelKey: 'settings_label_translate_violations',
 				helpTextKey: 'settings_help_translate_violations'
+			},
+			{
+				key: SETTINGS_KEYS.CIPHER_DECODING_ENABLED,
+				labelKey: 'settings_label_cipher_decoding',
+				helpTextKey: 'settings_help_cipher_decoding'
 			}
 		]
 	},
@@ -198,20 +209,3 @@ export const SETTING_CATEGORIES: SettingCategory[] = [
 		]
 	}
 ];
-
-// Experimental developer settings
-export const EXPERIMENTAL_DEVELOPER_CATEGORY: SettingCategory = {
-	titleKey: 'settings_category_developer',
-	settings: [
-		{
-			key: SETTINGS_KEYS.DEBUG_MODE_ENABLED,
-			labelKey: 'settings_label_debug_logging',
-			helpTextKey: 'settings_help_debug_logging'
-		},
-		{
-			key: SETTINGS_KEYS.CACHE_DURATION_MINUTES,
-			labelKey: 'settings_label_cache_duration',
-			helpTextKey: 'settings_help_cache_duration'
-		}
-	]
-};

@@ -2,31 +2,79 @@
 	import { get } from 'svelte/store';
 	import OnboardingManager from '@/components/onboarding/OnboardingManager.svelte';
 	import ChangelogModal from '@/components/changelog/ChangelogModal.svelte';
+	import LegalUpdateModal from '@/components/legal/LegalUpdateModal.svelte';
+	import OutfitViewerModal from '@/components/features/outfit/OutfitViewerModal.svelte';
+	import FirstDetectionModal from '@/components/features/profile/FirstDetectionModal.svelte';
+	import RestrictionNoticeModal from '@/components/features/report/RestrictionNoticeModal.svelte';
+	import ReviewPromptModal from '@/components/features/review-prompt/ReviewPromptModal.svelte';
+	import Toast from '@/components/ui/Toast.svelte';
 	import { shouldShowChangelogModal } from '@/lib/stores/changelog';
+	import { shouldShowLegalModal, triggerLegalReview } from '@/lib/stores/legal';
+	import { shouldShowFirstDetection } from '@/lib/stores/first-detection';
+	import { shouldShowRestrictionNotice } from '@/lib/stores/restricted-access';
+	import { loadReviewPromptState, shouldShowReviewPrompt } from '@/lib/stores/review-prompt';
 	import { triggerOnboardingReplay } from '@/lib/stores/onboarding';
-	import { logger } from '@/lib/utils/logger';
+
+	import { closeOutfitViewer, outfitViewerRequest } from '@/lib/stores/outfit-viewer';
+	import { shouldShowOnboarding } from '@/lib/stores/onboarding';
+	import { logger } from '@/lib/utils/logging/logger';
+	import { getStorage, removeStorage } from '@/lib/utils/storage';
 
 	const showChangelog = get(shouldShowChangelogModal);
 
-	// Check for replay request from popup
-	async function checkReplayRequest() {
-		const replayResult = await browser.storage.local.get('onboardingReplayRequested');
-		if (replayResult.onboardingReplayRequested) {
-			await browser.storage.local.remove('onboardingReplayRequested');
+	async function checkPopupRequests() {
+		const [replayRequested, legalRequested] = await Promise.all([
+			getStorage<boolean>('local', 'onboardingReplayRequested', false),
+			getStorage<boolean>('local', 'legalReviewRequested', false)
+		]);
+		const toRemove: string[] = [];
+		if (replayRequested) {
+			toRemove.push('onboardingReplayRequested');
 			triggerOnboardingReplay();
 			logger.debug('Onboarding replay triggered from popup');
 		}
+		if (legalRequested) {
+			toRemove.push('legalReviewRequested');
+			await triggerLegalReview();
+			logger.debug('Legal review triggered from popup');
+		}
+		if (toRemove.length > 0) await removeStorage('local', toRemove);
 	}
 
-	void checkReplayRequest();
+	void checkPopupRequests();
+	void loadReviewPromptState();
 </script>
 
-<OnboardingManager />
+{#if $shouldShowOnboarding}
+	<OnboardingManager />
+{/if}
+
+{#if $shouldShowLegalModal}
+	<LegalUpdateModal />
+{/if}
 
 {#if showChangelog}
-	<ChangelogModal
-		onClose={() => {
-			logger.debug('Changelog modal closed');
-		}}
+	<ChangelogModal onClose={() => logger.debug('Changelog modal closed')} />
+{/if}
+
+{#if $shouldShowRestrictionNotice}
+	<RestrictionNoticeModal />
+{/if}
+
+{#if $shouldShowFirstDetection}
+	<FirstDetectionModal />
+{/if}
+
+{#if $shouldShowReviewPrompt}
+	<ReviewPromptModal />
+{/if}
+
+{#if $outfitViewerRequest}
+	<OutfitViewerModal
+		flaggedOutfits={$outfitViewerRequest.flaggedOutfits}
+		onClose={closeOutfitViewer}
+		userId={$outfitViewerRequest.userId}
 	/>
 {/if}
+
+<Toast />

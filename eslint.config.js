@@ -1,14 +1,19 @@
 import prettier from 'eslint-config-prettier';
+import css from '@eslint/css';
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import svelte from 'eslint-plugin-svelte';
 import globals from 'globals';
 import unusedImports from 'eslint-plugin-unused-imports';
 import betterTailwindcss from 'eslint-plugin-better-tailwindcss';
+import sonarjs from 'eslint-plugin-sonarjs';
+import unicorn from 'eslint-plugin-unicorn';
+import oxlint from 'eslint-plugin-oxlint';
 import svelteEslintParser from 'svelte-eslint-parser';
+import { tailwind4 } from 'tailwind-csstree';
 
 export default tseslint.config(
-	// Ignore patterns
+	// ── Ignore patterns ──────────────────────────────────────────────
 	{
 		ignores: [
 			'**/node_modules/**',
@@ -17,44 +22,98 @@ export default tseslint.config(
 			'**/dist/**',
 			'**/build/**',
 			'**/.svelte-kit/**',
+			'**/.svelte-check/**',
 			'**/public/**',
 			'**/scripts/**',
 			'**/*.min.js',
 			'*.config.{js,ts,mjs,cjs}'
 		]
 	},
-	// Global settings
+
+	// ── Global settings ──────────────────────────────────────────────
 	{
 		settings: {
 			'better-tailwindcss': { entryPoint: 'src/styles/index.css' }
 		}
 	},
-	// Base JavaScript and TypeScript configuration
-	js.configs.recommended,
-	...tseslint.configs.recommendedTypeChecked,
-	// General configuration for all files
+
+	// ── Base presets ─────────────────────────────────────────────────
+	{ files: ['**/*.{js,ts,mjs,cjs,svelte}'], ...js.configs.recommended },
+	...tseslint.configs.strictTypeChecked.map((c) => ({
+		files: ['**/*.{js,ts,mjs,cjs,svelte}'],
+		...c
+	})),
+	...tseslint.configs.stylisticTypeChecked.map((c) => ({
+		files: ['**/*.{js,ts,mjs,cjs,svelte}'],
+		...c
+	})),
+
+	// ── Unicorn ──────────────────────────────────────────────────────
+	{
+		files: ['**/*.{js,ts,mjs,cjs,svelte}'],
+		plugins: { unicorn },
+		rules: {
+			...unicorn.configs.recommended.rules,
+			'unicorn/filename-case': 'off',
+			'unicorn/prevent-abbreviations': 'off',
+			'unicorn/no-null': 'off',
+			'unicorn/consistent-function-scoping': 'off',
+			'unicorn/no-array-for-each': 'off',
+			'unicorn/no-negated-condition': 'warn',
+			'unicorn/prefer-ternary': 'warn',
+			'unicorn/no-array-callback-reference': 'off',
+			'unicorn/no-array-sort': 'warn',
+			'unicorn/prefer-top-level-await': 'off',
+			'unicorn/prefer-code-point': 'off',
+			'unicorn/no-useless-undefined': 'off'
+		}
+	},
+
+	// ── strict/stylistic preset overrides ────────────────────────────
+	{
+		files: ['**/*.{js,ts,mjs,cjs,svelte}'],
+		rules: {
+			'@typescript-eslint/no-confusing-void-expression': [
+				'error',
+				{ ignoreArrowShorthand: true, ignoreVoidOperator: true }
+			],
+			'@typescript-eslint/no-dynamic-delete': 'off',
+			'@typescript-eslint/no-non-null-assertion': 'warn',
+			'@typescript-eslint/no-deprecated': 'warn',
+			'@typescript-eslint/no-empty-function': 'off',
+			'@typescript-eslint/prefer-regexp-exec': 'off',
+			'@typescript-eslint/no-inferrable-types': 'warn',
+			'@typescript-eslint/prefer-nullish-coalescing': [
+				'error',
+				{
+					ignoreConditionalTests: true,
+					ignoreMixedLogicalExpressions: true,
+					ignorePrimitives: { string: true, boolean: true }
+				}
+			]
+		}
+	},
+
+	// ── TypeScript / JavaScript files ────────────────────────────────
 	{
 		files: ['**/*.{js,ts,mjs,cjs}'],
-		ignores: ['**/*.config.{js,ts,mjs,cjs}'],
+		ignores: ['**/*.config.{js,ts,mjs,cjs}', '**/*.svelte.{ts,js}'],
 		plugins: {
 			'unused-imports': unusedImports,
-			'better-tailwindcss': betterTailwindcss
+			'better-tailwindcss': betterTailwindcss,
+			sonarjs
 		},
 		languageOptions: {
 			ecmaVersion: 2022,
 			sourceType: 'module',
 			parser: tseslint.parser,
-			parserOptions: {
-				projectService: true
-			},
+			parserOptions: { projectService: true },
 			globals: {
 				...globals.browser,
 				...globals.node,
 				...globals.webextensions,
-				// WXT globals
 				browser: 'readonly',
 				chrome: 'readonly',
-				// Custom globals for the extension
 				logger: 'readonly',
 				defineBackground: 'readonly',
 				defineContentScript: 'readonly',
@@ -62,14 +121,17 @@ export default tseslint.config(
 			}
 		},
 		rules: {
-			/* === Code Quality & Safety === */ 'no-console': 'warn',
+			// Code quality & safety
+			'no-console': 'warn',
 			'no-debugger': 'warn',
 			eqeqeq: ['error', 'always'],
 			'no-eval': 'error',
 			'no-implied-eval': 'error',
 			'no-new-func': 'error',
 			'no-script-url': 'error',
-			/* === Import Management === */ 'no-unused-vars': 'off',
+
+			// Import management
+			'no-unused-vars': 'off',
 			'@typescript-eslint/no-unused-vars': 'off',
 			'unused-imports/no-unused-imports': 'error',
 			'unused-imports/no-unused-vars': [
@@ -83,74 +145,97 @@ export default tseslint.config(
 			],
 			'no-duplicate-imports': 'error',
 			'@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
-			/* === TypeScript Configuration === */ '@typescript-eslint/explicit-function-return-type':
-				'off',
+
+			// TypeScript configuration
+			'@typescript-eslint/explicit-function-return-type': 'off',
 			'@typescript-eslint/explicit-module-boundary-types': 'off',
 			'@typescript-eslint/no-explicit-any': 'warn',
-			'@typescript-eslint/no-non-null-assertion': 'warn',
 			'@typescript-eslint/no-var-requires': 'off',
-			/* === TypeScript Best Practices === */ '@typescript-eslint/no-unnecessary-type-assertion':
-				'error',
-			'@typescript-eslint/prefer-nullish-coalescing': 'error',
-			'@typescript-eslint/prefer-optional-chain': 'error',
-			'@typescript-eslint/prefer-as-const': 'error',
-			'@typescript-eslint/no-redundant-type-constituents': 'error',
-			'@typescript-eslint/no-useless-empty-export': 'error',
+
+			// TypeScript best practices
 			'@typescript-eslint/consistent-type-definitions': ['error', 'interface'],
 			'@typescript-eslint/array-type': ['error', { default: 'array-simple' }],
-			'@typescript-eslint/no-unsafe-argument': 'error',
-			'@typescript-eslint/no-unsafe-assignment': 'error',
-			'@typescript-eslint/no-unsafe-call': 'error',
-			'@typescript-eslint/no-unsafe-member-access': 'error',
-			'@typescript-eslint/no-unsafe-return': 'error',
 			'@typescript-eslint/prefer-for-of': 'warn',
-			'@typescript-eslint/no-array-delete': 'error',
 			'@typescript-eslint/switch-exhaustiveness-check': 'error',
-			'@typescript-eslint/prefer-readonly': 'error',
-			'@typescript-eslint/prefer-string-starts-ends-with': 'error',
-			'@typescript-eslint/prefer-includes': 'error',
-			'@typescript-eslint/no-unnecessary-boolean-literal-compare': 'error',
-			'@typescript-eslint/prefer-reduce-type-parameter': 'error',
 			'@typescript-eslint/prefer-function-type': 'error',
 			'@typescript-eslint/no-import-type-side-effects': 'error',
-			'@typescript-eslint/no-base-to-string': 'error',
-			'@typescript-eslint/no-for-in-array': 'error',
-			'@typescript-eslint/restrict-plus-operands': 'error',
-			'@typescript-eslint/restrict-template-expressions': 'error',
-			'@typescript-eslint/no-confusing-void-expression': 'error',
-			'@typescript-eslint/prefer-find': 'warn',
-			'@typescript-eslint/require-array-sort-compare': 'warn',
-			'@typescript-eslint/no-deprecated': 'warn',
-			'@typescript-eslint/prefer-regexp-exec': 'warn',
-			'@typescript-eslint/return-await': 'error',
 			'@typescript-eslint/consistent-type-exports': 'error',
-			/* === Promise/Async Handling === */ '@typescript-eslint/await-thenable': 'error',
-			'@typescript-eslint/require-await': 'off', // note: we disable this for interface consistency
-			'@typescript-eslint/no-floating-promises': 'error',
+
+			// Promise/async handling
+			'@typescript-eslint/require-await': 'off',
 			'@typescript-eslint/no-misused-promises': [
 				'error',
-				{
-					checksVoidReturn: { arguments: false, attributes: false }
-				}
+				{ checksVoidReturn: { arguments: false, attributes: false } }
 			],
-			'@typescript-eslint/promise-function-async': 'error',
 			'prefer-promise-reject-errors': 'error',
-			/* === Modern JavaScript === */ 'prefer-const': 'error',
+
+			// Modern JavaScript
+			'prefer-const': 'error',
 			'no-var': 'error',
 			'object-shorthand': 'error',
 			'prefer-arrow-callback': 'error',
 			'prefer-template': 'error',
-			/* === Error Prevention === */ 'no-throw-literal': 'error',
+
+			// Error prevention
+			'no-throw-literal': 'error',
 			'no-constructor-return': 'error',
 			'no-self-compare': 'error',
 			'no-unmodified-loop-condition': 'warn',
 			'no-unreachable-loop': 'error',
 			'no-unused-private-class-members': 'warn',
-			'no-template-curly-in-string': 'warn'
+			'no-template-curly-in-string': 'warn',
+
+			// SonarJS code smells
+			'sonarjs/cognitive-complexity': ['warn', 20],
+			'sonarjs/no-identical-functions': 'error',
+			'sonarjs/no-duplicate-string': ['warn', { threshold: 5 }],
+			'sonarjs/no-identical-expressions': 'error',
+			'sonarjs/no-all-duplicated-branches': 'error',
+			'sonarjs/no-redundant-boolean': 'error',
+			'sonarjs/no-useless-catch': 'error',
+			'sonarjs/prefer-immediate-return': 'warn',
+			'sonarjs/no-nested-template-literals': 'warn',
+			'sonarjs/no-small-switch': 'warn',
+			'sonarjs/no-collapsible-if': 'warn',
+			'sonarjs/no-inverted-boolean-check': 'warn',
+			'sonarjs/prefer-single-boolean-return': 'warn'
 		}
 	},
-	/* === Svelte Configuration === */ ...svelte.configs['flat/recommended'],
-	...svelte.configs.prettier,
+
+	// ── Svelte rune modules ────────────────
+	{
+		files: ['**/*.svelte.{ts,js}'],
+		plugins: {
+			'unused-imports': unusedImports,
+			sonarjs
+		},
+		languageOptions: {
+			ecmaVersion: 2022,
+			sourceType: 'module',
+			parser: svelteEslintParser,
+			parserOptions: {
+				parser: tseslint.parser,
+				projectService: true,
+				svelteFeatures: { runes: true }
+			},
+			globals: {
+				...globals.browser,
+				...globals.webextensions,
+				browser: 'readonly',
+				chrome: 'readonly',
+				$state: 'readonly',
+				$derived: 'readonly',
+				$effect: 'readonly',
+				$props: 'readonly',
+				$bindable: 'readonly',
+				$inspect: 'readonly'
+			}
+		}
+	},
+
+	// ── Svelte files ─────────────────────────────────────────────────
+	...svelte.configs['flat/recommended'].map((c) => ({ files: ['**/*.svelte'], ...c })),
+	...svelte.configs.prettier.map((c) => ({ files: ['**/*.svelte'], ...c })),
 	{
 		files: ['**/*.svelte'],
 		plugins: { 'unused-imports': unusedImports },
@@ -177,7 +262,19 @@ export default tseslint.config(
 			}
 		},
 		rules: {
-			/* === Import Management === */ 'unused-imports/no-unused-imports': 'error',
+			// Svelte 5 syntax incompatibilities
+			//   - $bindable() declaration uses `prop = $bindable()` even on required props
+			//   - {@render snippet()} accepts only call expressions; inline {#snippet} returns void
+			'@typescript-eslint/no-useless-default-assignment': 'off',
+			'@typescript-eslint/no-confusing-void-expression': 'off',
+
+			// Off: SvelteKit-specific rule that doesn't apply to browser extensions (no resolve())
+			'svelte/no-navigation-without-resolve': 'off',
+
+			// Import management
+			'no-unused-vars': 'off',
+			'@typescript-eslint/no-unused-vars': 'off',
+			'unused-imports/no-unused-imports': 'error',
 			'unused-imports/no-unused-vars': [
 				'warn',
 				{
@@ -187,55 +284,61 @@ export default tseslint.config(
 					argsIgnorePattern: '^_'
 				}
 			],
-			/* === Svelte Correctness === */ 'svelte/valid-compile': 'error', // Ensure Svelte code compiles
-			'svelte/no-at-debug-tags': 'warn', // Warn about debug tags in production
-			'svelte/no-unused-svelte-ignore': 'warn', // Clean up unused ignore comments
-			'svelte/require-store-reactive-access': 'warn', // Ensure proper store access in templates
-			'svelte/no-store-async': 'error', // Prevent async stores (causes issues)
-			'svelte/no-dom-manipulating': 'error', // Prevent direct DOM manipulation
-			'svelte/no-dupe-else-if-blocks': 'error', // Prevent duplicate else-if conditions
-			'svelte/no-dupe-on-directives': 'error', // Prevent duplicate on: handlers
-			'svelte/no-dupe-use-directives': 'error', // Prevent duplicate use: directives
-			'svelte/no-dupe-style-properties': 'error', // Prevent duplicate CSS properties
-			'svelte/no-not-function-handler': 'error', // Ensure event handlers are functions
-			'svelte/no-object-in-text-mustaches': 'error', // Prevent objects in {text}
-			'svelte/valid-each-key': 'error', // Validate {#each} key variables
-			'svelte/no-shorthand-style-property-overrides': 'error', // CSS shorthand conflicts
-			'svelte/no-at-html-tags': 'error', // Prevent XSS with {@html}
-			'svelte/no-target-blank': 'warn', // Security: require rel="noopener noreferrer"
-			'svelte/infinite-reactive-loop': 'error', // Prevent infinite reactive loops
-			'svelte/no-reactive-reassign': 'warn', // Prevent reassigning reactive values
-			'svelte/require-each-key': 'warn', // Performance: keyed {#each} blocks
-			'svelte/no-unnecessary-state-wrap': 'warn', // Don't wrap reactive classes in $state
-			'svelte/prefer-writable-derived': 'warn', // Use writable $derived over $state + $effect
-			'svelte/no-useless-children-snippet': 'warn', // Remove unnecessary children snippets
-			'svelte/prefer-svelte-reactivity': 'error', // Use Svelte reactivity over JS classes
-			'svelte/button-has-type': 'warn', // Explicit button types
-			'svelte/no-ignored-unsubscribe': 'error', // Always handle store unsubscribe
-			'svelte/require-store-callbacks-use-set-param': 'error', // Proper store callback patterns
-			'svelte/no-raw-special-elements': 'error', // Prevent invalid HTML elements
-			'svelte/valid-style-parse': 'error', // Valid CSS in style blocks
-			'svelte/no-unknown-style-directive-property': 'error', // Valid style: directives
-			'svelte/no-immutable-reactive-statements': 'error', // Reactive statements must be reactive
-			'svelte/no-reactive-functions': 'error', // Don't define functions in reactive statements
-			'svelte/no-reactive-literals': 'error', // Don't assign literals in reactive statements
-			'svelte/require-event-dispatcher-types': 'warn', // Type-safe event dispatchers
-			'svelte/require-stores-init': 'warn', // Initialize stores properly
-			'svelte/no-svelte-internal': 'error', // Avoid svelte/internal (deprecated)
-			'svelte/derived-has-same-inputs-outputs': 'warn', // Consistent derived store naming
-			/* === Svelte Style Preferences === */ 'svelte/html-self-closing': 'warn', // Consistent self-closing tag style
-			'svelte/mustache-spacing': 'warn', // Consistent spacing in mustache expressions
+
+			// Svelte correctness
+			'svelte/valid-compile': 'error',
+			'svelte/no-at-debug-tags': 'warn',
+			'svelte/no-unused-svelte-ignore': 'warn',
+			'svelte/require-store-reactive-access': 'warn',
+			'svelte/no-store-async': 'error',
+			'svelte/no-dom-manipulating': 'error',
+			'svelte/no-dupe-else-if-blocks': 'error',
+			'svelte/no-dupe-on-directives': 'error',
+			'svelte/no-dupe-use-directives': 'error',
+			'svelte/no-dupe-style-properties': 'error',
+			'svelte/no-not-function-handler': 'error',
+			'svelte/no-object-in-text-mustaches': 'error',
+			'svelte/valid-each-key': 'error',
+			'svelte/no-shorthand-style-property-overrides': 'error',
+			'svelte/no-at-html-tags': 'error',
+			'svelte/no-target-blank': 'warn',
+			'svelte/infinite-reactive-loop': 'error',
+			'svelte/no-reactive-reassign': 'warn',
+			'svelte/require-each-key': 'warn',
+			'svelte/no-unnecessary-state-wrap': 'warn',
+			'svelte/prefer-writable-derived': 'warn',
+			'svelte/no-useless-children-snippet': 'warn',
+			'svelte/prefer-svelte-reactivity': 'error',
+			'svelte/button-has-type': 'warn',
+			'svelte/no-ignored-unsubscribe': 'error',
+			'svelte/require-store-callbacks-use-set-param': 'error',
+			'svelte/no-raw-special-elements': 'error',
+			'svelte/valid-style-parse': 'error',
+			'svelte/no-unknown-style-directive-property': 'error',
+			'svelte/no-immutable-reactive-statements': 'error',
+			'svelte/no-reactive-functions': 'error',
+			'svelte/no-reactive-literals': 'error',
+			'svelte/require-event-dispatcher-types': 'warn',
+			'svelte/require-stores-init': 'warn',
+			'svelte/no-svelte-internal': 'error',
+			'svelte/derived-has-same-inputs-outputs': 'warn',
+
+			// Svelte style preferences
+			'svelte/html-self-closing': 'warn',
+			'svelte/mustache-spacing': 'warn',
 			'svelte/no-spaces-around-equal-signs-in-attribute': 'warn',
-			'svelte/prefer-class-directive': 'warn', // Use class: directives over manual classes
-			'svelte/prefer-style-directive': 'warn', // Use style: directives over manual styles
-			'svelte/shorthand-attribute': 'warn', // Use {value} instead of value={value}
-			'svelte/shorthand-directive': 'warn', // Use on:click instead of on:click={handler}
-			'svelte/sort-attributes': 'warn', // Consistent attribute ordering
-			'svelte/spaced-html-comment': 'warn', // Consistent HTML comment spacing
-			'svelte/no-useless-mustaches': 'warn' // Remove unnecessary {expression}
+			'svelte/prefer-class-directive': 'warn',
+			'svelte/prefer-style-directive': 'warn',
+			'svelte/shorthand-attribute': 'warn',
+			'svelte/shorthand-directive': 'warn',
+			'svelte/sort-attributes': 'warn',
+			'svelte/spaced-html-comment': 'warn',
+			'svelte/no-useless-mustaches': 'warn'
 		}
 	},
-	/* === Tailwind CSS for Svelte === */ {
+
+	// ── Tailwind CSS in Svelte ───────────────────────────────────────
+	{
 		files: ['**/*.svelte'],
 		languageOptions: {
 			parser: svelteEslintParser,
@@ -247,43 +350,75 @@ export default tseslint.config(
 		},
 		plugins: { 'better-tailwindcss': betterTailwindcss },
 		rules: {
-			/* === Correctness Rules === */ 'better-tailwindcss/no-duplicate-classes': 'error',
+			'better-tailwindcss/no-duplicate-classes': 'error',
 			'better-tailwindcss/no-conflicting-classes': 'error',
-			'better-tailwindcss/no-unregistered-classes': 'off',
+			'better-tailwindcss/no-unknown-classes': 'off',
 			'better-tailwindcss/no-restricted-classes': 'off',
-			/* === Stylistic Rules === */ 'better-tailwindcss/no-unnecessary-whitespace': 'warn',
+			'better-tailwindcss/no-unnecessary-whitespace': 'warn',
 			'better-tailwindcss/no-deprecated-classes': 'warn',
+			'better-tailwindcss/enforce-canonical-classes': 'warn',
 			'better-tailwindcss/enforce-consistent-class-order': 'off',
 			'better-tailwindcss/enforce-consistent-line-wrapping': 'off',
 			'better-tailwindcss/enforce-consistent-variable-syntax': 'warn',
+			'better-tailwindcss/enforce-consistent-variant-order': 'warn',
 			'better-tailwindcss/enforce-consistent-important-position': 'warn',
-			'better-tailwindcss/enforce-shorthand-classes': 'warn'
-		}
-	},
-	/* === WXT Framework Configuration === */ {
-		files: ['**/entrypoints/**/*.{ts,js}'],
-		languageOptions: {
-			globals: {
-				defineBackground: 'readonly', // WXT background script globals
-				defineContentScript: 'readonly', // WXT content script globals
-				defineUnlistedScript: 'readonly', // WXT unlisted script globals
-				defineConfig: 'readonly' // WXT config globals
-			}
-		}
-	},
-	/* === Files Where Console Logging Is Acceptable === */ {
-		files: [
-			'**/lib/utils/logger.ts', // Logger utility needs console access
-			'**/lib/services/api-client.ts', // API client logs important events
-			'**/lib/services/settings-bridge.ts', // Settings bridge logs initialization
-			'**/lib/stores/settings.ts', // Settings store logs changes
-			'**/lib/stores/statistics.ts' // Statistics store logs operations
-		],
-		rules: {
-			'no-console': 'off' // Allow console statements in these files
+			'better-tailwindcss/enforce-shorthand-classes': 'warn',
+			'better-tailwindcss/enforce-logical-properties': 'warn'
 		}
 	},
 
-	/* === Prettier Integration === */
-	prettier
+	// ── Tailwind CSS in @apply blocks ────────────────────────────────
+	{
+		files: ['**/*.css'],
+		language: 'css/css',
+		languageOptions: { customSyntax: tailwind4, tolerant: true },
+		plugins: { css, 'better-tailwindcss': betterTailwindcss },
+		rules: {
+			'better-tailwindcss/no-duplicate-classes': 'error',
+			'better-tailwindcss/no-conflicting-classes': 'error',
+			'better-tailwindcss/no-unknown-classes': 'off',
+			'better-tailwindcss/no-restricted-classes': 'off',
+			'better-tailwindcss/no-unnecessary-whitespace': 'warn',
+			'better-tailwindcss/no-deprecated-classes': 'warn',
+			'better-tailwindcss/enforce-canonical-classes': 'warn',
+			'better-tailwindcss/enforce-consistent-class-order': 'off',
+			'better-tailwindcss/enforce-consistent-line-wrapping': 'off',
+			'better-tailwindcss/enforce-consistent-variable-syntax': 'warn',
+			'better-tailwindcss/enforce-consistent-variant-order': 'warn',
+			'better-tailwindcss/enforce-consistent-important-position': 'warn',
+			'better-tailwindcss/enforce-shorthand-classes': 'warn',
+			'better-tailwindcss/enforce-logical-properties': 'warn'
+		}
+	},
+
+	// ── WXT framework globals ────────────────────────────────────────
+	{
+		files: ['**/entrypoints/**/*.{ts,js}'],
+		languageOptions: {
+			globals: {
+				defineBackground: 'readonly',
+				defineContentScript: 'readonly',
+				defineUnlistedScript: 'readonly',
+				defineConfig: 'readonly'
+			}
+		}
+	},
+
+	// ── Files where console logging is acceptable ────────────────────
+	{
+		files: [
+			'**/lib/utils/logging/logger.ts',
+			'**/lib/services/rotector/api-client.ts',
+			'**/lib/stores/settings.ts',
+			'**/lib/stores/statistics.ts',
+			'**/lib/stores/persistent-list-store.ts'
+		],
+		rules: { 'no-console': 'off' }
+	},
+
+	// ── Prettier integration ─────────────────────────────────────────
+	prettier,
+
+	// ── Oxlint ───────────────────────────────────────────────────────
+	...oxlint.configs['flat/recommended']
 );

@@ -1,27 +1,66 @@
 <script lang="ts">
 	import { _ } from 'svelte-i18n';
-	import {
-		queueHistory,
-		loadQueueHistory,
-		removeQueueEntry,
-		clearQueueHistory
-	} from '@/lib/stores/queue-history';
-	import {
-		ExternalLink,
-		Trash2,
-		Clock,
-		CheckCircle,
-		AlertTriangle,
-		Loader,
-		ListX
-	} from '@lucide/svelte';
+	import { flip } from 'svelte/animate';
+	import { SvelteMap } from 'svelte/reactivity';
+	import { crossfade } from 'svelte/transition';
+	import { queueHistory, loadQueueHistory } from '@/lib/stores/queue-history';
+	import { clearQueueHistory, removeQueueEntry } from '@/lib/utils/queue-history-storage';
+	import { getUsersInfoBatch, type UserInfo } from '@/lib/services/roblox/users';
+	import type { QueueHistoryEntry } from '@/lib/types/queue-history';
+	import { ListX } from '@lucide/svelte';
 	import LoadingSpinner from '../../ui/LoadingSpinner.svelte';
+	import QueueRow from './QueueRow.svelte';
 
 	let isLoading = $state(true);
+	let mounted = $state(false);
+	const userInfo = new SvelteMap<number, UserInfo | null | undefined>();
+
+	const [send, receive] = crossfade({
+		duration: 220,
+		fallback() {
+			return {
+				duration: 160,
+				css: (t: number) =>
+					`opacity: ${String(t)}; transform: translateY(${String((1 - t) * 4)}px);`
+			};
+		}
+	});
+
+	const processingEntries = $derived($queueHistory.filter((e) => !e.processed));
+	const flaggedEntries = $derived($queueHistory.filter((e) => e.processed && e.flagged));
+	const safeEntries = $derived($queueHistory.filter((e) => e.processed && !e.flagged));
+
+	const groups = $derived([
+		{
+			entries: processingEntries,
+			labelKey: 'queue_section_processing',
+			variant: 'processing' as const
+		},
+		{ entries: flaggedEntries, labelKey: 'queue_section_flagged', variant: 'flagged' as const },
+		{ entries: safeEntries, labelKey: 'queue_section_safe', variant: 'safe' as const }
+	]);
+
+	const processedCount = $derived($queueHistory.filter((e) => e.processed).length);
+	const pendingCount = $derived(processingEntries.length);
 
 	$effect(() => {
 		void loadQueueHistory().finally(() => {
 			isLoading = false;
+			mounted = true;
+		});
+	});
+
+	$effect(() => {
+		const ids: number[] = [];
+		for (const entry of $queueHistory) {
+			if (!userInfo.has(entry.userId)) {
+				ids.push(entry.userId);
+				userInfo.set(entry.userId, undefined);
+			}
+		}
+		if (ids.length === 0) return;
+		void getUsersInfoBatch(ids).then((batch) => {
+			for (const [id, info] of batch) userInfo.set(id, info);
 		});
 	});
 
@@ -29,13 +68,13 @@
 		const now = Date.now();
 		const diff = now - timestamp;
 
-		if (diff < 60000) return $_('queue_history_time_just_now');
-		if (diff < 3600000) {
-			const mins = Math.floor(diff / 60000);
+		if (diff < 60_000) return $_('queue_history_time_just_now');
+		if (diff < 3_600_000) {
+			const mins = Math.floor(diff / 60_000);
 			return $_('queue_history_time_minutes_ago', { values: { 0: mins } });
 		}
-		if (diff < 86400000) {
-			const hours = Math.floor(diff / 3600000);
+		if (diff < 86_400_000) {
+			const hours = Math.floor(diff / 3_600_000);
 			return $_('queue_history_time_hours_ago', { values: { 0: hours } });
 		}
 
@@ -43,8 +82,18 @@
 		return date.toLocaleDateString();
 	}
 
+	function entryTimeText(entry: QueueHistoryEntry): string {
+		if (entry.processed && entry.processedAt) {
+			return formatTime(entry.processedAt);
+		}
+		if (entry.processing) {
+			return $_('queue_history_processing');
+		}
+		return formatTime(entry.queuedAt);
+	}
+
 	function openProfile(userId: number): void {
-		void browser.tabs.create({ url: `https://www.roblox.com/users/${userId}/profile` });
+		void browser.tabs.create({ url: `https://www.roblox.com/users/${String(userId)}/profile` });
 	}
 
 	function handleRemove(userId: number): void {
@@ -56,116 +105,66 @@
 	}
 </script>
 
-<div class="queue-history-container">
-	<div
-		class="
-		border-border mb-3 flex items-center justify-between border-b pb-1.5
-		dark:border-border-dark
-	"
-	>
-		<h2
-			class="
-			text-text-heading m-0 flex items-center gap-1.5 text-base font-semibold
-			tracking-tight
-			dark:text-text-heading-dark
-		"
-		>
-			{$_('queue_history_title')}
-		</h2>
+<section class="queue-section-root">
+	<header class="queue-section-header">
+		<h2 class="queue-section-title">{$_('queue_history_title')}</h2>
 		{#if $queueHistory.length > 0}
-			<button
-				class="queue-history-clear-button"
-				onclick={handleClearAll}
-				title={$_('queue_history_clear_all')}
-				type="button"
-			>
-				<Trash2 size={12} />
-				<span>{$_('queue_history_clear_all')}</span>
-			</button>
+			<div class="queue-section-summary">
+				<span>
+					{$_('queue_history_summary_counts', {
+						values: { pending: pendingCount, processed: processedCount }
+					})}
+				</span>
+				<button class="queue-section-clear" onclick={handleClearAll} type="button">
+					{$_('queue_history_clear_all')}
+				</button>
+			</div>
 		{/if}
-	</div>
+	</header>
 
 	{#if isLoading}
-		<div
-			class="
-			text-text-subtle flex flex-col items-center gap-3 py-8 text-sm
-			dark:text-text-subtle-dark
-		"
-		>
+		<div class="queue-loading">
 			<LoadingSpinner size="medium" />
 			<span>{$_('queue_history_loading')}</span>
 		</div>
 	{:else if $queueHistory.length === 0}
-		<div class="queue-history-empty">
-			<div class="queue-history-empty-icon">
-				<ListX size={32} strokeWidth={1.5} />
+		<div class="queue-empty">
+			<div class="queue-empty-icon">
+				<ListX size={28} strokeWidth={1.5} />
 			</div>
-			<p class="queue-history-empty-title">{$_('queue_history_empty')}</p>
-			<p class="queue-history-empty-hint">{$_('queue_history_empty_hint')}</p>
+			<p class="queue-empty-title">{$_('queue_history_empty')}</p>
+			<p class="queue-empty-hint">{$_('queue_history_empty_hint')}</p>
 		</div>
 	{:else}
-		<div class="queue-history-list">
-			{#each $queueHistory as entry (entry.userId)}
-				<div
-					class="queue-history-item"
-					class:flagged={entry.processed && entry.flagged}
-					class:processing={entry.processing}
-				>
-					<div class="queue-history-item-status">
-						{#if entry.processing}
-							<Loader class="queue-history-icon-processing" size={16} />
-						{:else if entry.processed && entry.flagged}
-							<AlertTriangle class="queue-history-icon-flagged" size={16} />
-						{:else if entry.processed}
-							<CheckCircle class="queue-history-icon-complete" size={16} />
-						{:else}
-							<Clock class="queue-history-icon-pending" size={16} />
-						{/if}
-					</div>
-
-					<div class="queue-history-item-info">
-						<div class="queue-history-item-user-id">{entry.userId}</div>
-						<div class="queue-history-item-time">
-							{#if entry.processed && entry.processedAt}
-								{$_('queue_history_processed_at', { values: { 0: formatTime(entry.processedAt) } })}
-							{:else if entry.processing}
-								{$_('queue_history_processing')}
-							{:else}
-								{$_('queue_history_queued_at', { values: { 0: formatTime(entry.queuedAt) } })}
-							{/if}
+		<div class="queue-groups">
+			{#each groups as group (group.variant)}
+				{#if group.entries.length > 0}
+					<div class="queue-group">
+						<div class="queue-group-label">
+							<span>{$_(group.labelKey)}</span>
+							<span class="queue-group-count">{group.entries.length}</span>
 						</div>
+						<ul class="queue-list">
+							{#each group.entries as entry (entry.userId)}
+								<li
+									in:receive={{ key: entry.userId, duration: mounted ? 220 : 0 }}
+									out:send={{ key: entry.userId, duration: mounted ? 220 : 0 }}
+									animate:flip={{ duration: 220 }}
+								>
+									<QueueRow
+										{entry}
+										onRemove={handleRemove}
+										onView={openProfile}
+										timeText={entryTimeText(entry)}
+										userInfo={userInfo.get(entry.userId)}
+										variant={group.variant}
+									/>
+								</li>
+							{/each}
+						</ul>
 					</div>
-
-					<div class="queue-history-item-result">
-						{#if entry.processed}
-							<span class="queue-history-result-badge" class:flagged={entry.flagged}>
-								{entry.flagged
-									? $_('queue_history_result_flagged')
-									: $_('queue_history_result_safe')}
-							</span>
-						{/if}
-					</div>
-
-					<div class="queue-history-item-actions">
-						<button
-							class="queue-history-action-button"
-							onclick={() => openProfile(entry.userId)}
-							title={$_('queue_history_view_profile')}
-							type="button"
-						>
-							<ExternalLink size={14} />
-						</button>
-						<button
-							class="queue-history-action-button queue-history-action-remove"
-							onclick={() => handleRemove(entry.userId)}
-							title={$_('queue_history_remove')}
-							type="button"
-						>
-							<Trash2 size={14} />
-						</button>
-					</div>
-				</div>
+				{/if}
 			{/each}
 		</div>
 	{/if}
-</div>
+</section>

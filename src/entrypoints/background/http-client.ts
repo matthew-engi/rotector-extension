@@ -1,286 +1,285 @@
 import { API_CONFIG } from '@/lib/types/constants';
 import { SETTINGS_KEYS } from '@/lib/types/settings';
 import type { CustomApiConfig } from '@/lib/types/custom-api';
-import { logger } from '@/lib/utils/logger';
+import { buildCustomApiAuthHeaders } from '@/lib/utils/api/api-auth';
+import { logger } from '@/lib/utils/logging/logger';
+import { type ApiError, asApiError, buildHttpError } from '@/lib/utils/api/api-error';
+import { getStorage } from '@/lib/utils/storage';
+import { getInstallationId } from '@/lib/utils/installation-id';
+import { markSessionRestricted } from '@/lib/stores/session-state';
+import {
+	bumpStoredAuthExpires,
+	clearStoredAuthToken,
+	getStoredAuthToken
+} from '@/lib/utils/roblox-auth-storage';
 
-const ACCESS_STATE_KEY = '_session_cache';
+type BearerOverride =
+	| { kind: 'membership' } // use X-Auth-Token (membership key) as Authorization
+	| { kind: 'none' }; // omit Authorization entirely
 
-// Mark access state in storage
-async function markAccessRestricted(): Promise<void> {
-	await browser.storage.local.set({
-		[ACCESS_STATE_KEY]: {
-			_v: 1,
-			_t: Date.now()
-		}
-	});
-	logger.warn('Access state updated due to 403 response');
-}
-
-// Get API key from settings
 async function getApiKey(): Promise<string | null> {
 	try {
-		const result = await browser.storage.sync.get([SETTINGS_KEYS.API_KEY]);
-		const apiKey = result[SETTINGS_KEYS.API_KEY] as string | undefined;
-		return typeof apiKey === 'string' ? apiKey || null : null;
+		return (await getStorage<string>('sync', SETTINGS_KEYS.API_KEY, '')) || null;
 	} catch (error) {
 		logger.error('Background: Failed to get API key:', error);
 		return null;
 	}
 }
 
-// Get extension UUID from storage
-async function getExtensionUuid(): Promise<string | null> {
-	try {
-		const result = await browser.storage.local.get(['extension_uuid']);
-		return (result.extension_uuid as string) ?? null;
-	} catch (error) {
-		logger.error('Failed to get extension UUID:', error);
-		return null;
-	}
-}
-
-// Compute retry delay from rate limit reset timestamp or linear backoff
-function computeRetryDelay(error: Error, baseDelay: number, attempt: number): number {
-	const { rateLimitReset } = error as Error & { rateLimitReset?: number };
-	if (rateLimitReset) {
-		return Math.max(rateLimitReset * 1000 - Date.now() + 500, 0);
+function computeRetryDelay(error: ApiError, baseDelay: number, attempt: number): number {
+	if (error.rateLimitReset) {
+		return Math.max(error.rateLimitReset * 1000 - Date.now() + 500, 0);
 	}
 	return baseDelay * attempt;
 }
 
-// Determine if error should trigger retry
-function isRetryableError(error: Error): boolean {
-	const status = (error as Error & { status?: number }).status;
+function isRetryableError(error: ApiError): boolean {
+	const status = error.status;
 
 	if (status) {
-		// Rate limits and server errors
 		if (status === 429 || (status >= 500 && status < 600)) {
 			return true;
 		}
-		// Request timeout
 		if (status === 408) {
 			return true;
 		}
 	}
 
-	// Network failures
-	if (error instanceof TypeError || status === 0) {
-		return true;
-	}
-
-	return false;
+	return error instanceof TypeError || status === 0;
 }
 
-// Unwrap custom API response from required wrapper format
-function unwrapCustomApiResponse(data: unknown): unknown {
-	// Require {success: boolean, data?: unknown, error?: string} wrapper format
-	if (!data || typeof data !== 'object' || !('success' in data)) {
-		throw new Error(
-			'Invalid response format: must be {success: boolean, data?: unknown, error?: string}'
+interface HttpRequestOptions<T = unknown> extends RequestInit {
+	timeout?: number | undefined;
+	maxRetries?: number | undefined;
+	retryDelay?: number | undefined;
+	customApi?: CustomApiConfig | undefined;
+	clientId?: string | undefined;
+	lookupContext?: string | undefined;
+	readPrimary?: boolean | undefined;
+	rawResponse?: boolean | undefined;
+	parse?: ((payload: unknown) => T) | undefined;
+	// When set, the response is handed off raw and the JSON parse / envelope
+	// unwrap path is skipped entirely. Used for non-JSON responses (file
+	// downloads). Implies maxRetries=1 because partial downloads aren't retryable.
+	parseResponse?: ((response: Response) => Promise<T>) | undefined;
+	// Auth bearer policy. Default uses the stored session token if present.
+	bearerOverride?: BearerOverride | undefined;
+}
+
+interface RotectorHeaderOptions {
+	clientId: string | undefined;
+	lookupContext: string | undefined;
+	readPrimary: boolean | undefined;
+	bearerOverride: BearerOverride | undefined;
+}
+
+async function resolveBearer(
+	override: BearerOverride | undefined,
+	apiKey: string | null
+): Promise<string | null> {
+	if (override?.kind === 'none') return null;
+	if (override?.kind === 'membership') return apiKey;
+	return getStoredAuthToken();
+}
+
+async function buildRotectorHeaders(
+	headers: Headers,
+	{ clientId, lookupContext, readPrimary, bearerOverride }: RotectorHeaderOptions
+): Promise<void> {
+	const rawApiKey = await getApiKey();
+	const apiKey = rawApiKey?.trim() ?? null;
+	if (apiKey) {
+		headers.set('X-Auth-Token', apiKey);
+	}
+
+	const bearer = await resolveBearer(bearerOverride, apiKey);
+	if (bearer) {
+		headers.set('Authorization', `Bearer ${bearer}`);
+	}
+
+	headers.set('X-Installation-ID', await getInstallationId());
+
+	if (clientId) {
+		headers.set('X-Client-ID', clientId);
+	}
+
+	if (lookupContext) {
+		headers.set('X-Lookup-Context', lookupContext);
+	}
+
+	if (readPrimary) {
+		headers.set('X-Read-Primary', 'true');
+	}
+}
+
+function normalizeFetchError(error: unknown, timeout: number): ApiError {
+	if (error instanceof Error && error.name === 'AbortError') {
+		return Object.assign(new Error(`Request timeout (${String(timeout)}ms)`), { status: 408 });
+	}
+
+	if (error instanceof TypeError && !('status' in error)) {
+		return Object.assign(
+			new Error('Unable to connect. Check your internet connection and try again.'),
+			{ status: 0 }
 		);
 	}
 
-	const wrapped = data as { success: boolean; data?: unknown; error?: string };
-
-	// Handle error response
-	if (!wrapped.success) {
-		const errorMessage = wrapped.error ?? 'API returned error without message';
-		throw new Error(errorMessage);
-	}
-
-	// Handle success response
-	if (!('data' in wrapped)) {
-		throw new Error('Invalid response format: success=true but missing data field');
-	}
-
-	return wrapped.data;
+	return asApiError(error);
 }
 
-interface RawHttpResult {
-	content: string;
-	filename: string;
-	mimeType: string;
+async function processRotectorResponseHeaders(headers: Headers): Promise<void> {
+	const expires = headers.get('X-Token-Expires');
+	if (!expires) return;
+	const parsed = Number(expires);
+	if (!Number.isFinite(parsed) || parsed <= 0) return;
+	await bumpStoredAuthExpires(parsed);
 }
 
-// HTTP client for non-JSON responses
-export async function makeRawHttpRequest(
+async function prepareHeaders(
+	fetchHeaders: HeadersInit | undefined,
+	customApi: CustomApiConfig | undefined,
+	rotectorOpts: RotectorHeaderOptions
+): Promise<Headers> {
+	const headers = new Headers({
+		'Content-Type': 'application/json',
+		Accept: 'application/json'
+	});
+
+	if (fetchHeaders) {
+		for (const [key, value] of new Headers(fetchHeaders).entries()) {
+			headers.set(key, value);
+		}
+	}
+
+	if (customApi) {
+		const authHeaders = buildCustomApiAuthHeaders(customApi);
+		for (const [name, value] of Object.entries(authHeaders)) {
+			headers.set(name, value);
+		}
+	} else {
+		await buildRotectorHeaders(headers, rotectorOpts);
+	}
+
+	return headers;
+}
+
+async function maybeWaitForRateLimit(headers: Headers): Promise<void> {
+	const remaining = headers.get('X-RateLimit-Remaining');
+	const reset = headers.get('X-RateLimit-Reset');
+	if (remaining === null || reset === null) return;
+	if (Number(remaining) > 0) return;
+
+	const waitMs = Number(reset) * 1000 - Date.now() + 500;
+	if (waitMs > 0) {
+		logger.debug(`Rate limit exhausted, waiting ${String(waitMs)}ms for reset`);
+		await new Promise((resolve) => setTimeout(resolve, waitMs));
+	}
+}
+
+// Returns retry delay in ms or null when not retryable
+function decideRetry(
+	error: ApiError,
+	attempt: number,
+	maxRetries: number,
+	retryDelay: number,
+	isSafeMethod: boolean
+): number | null {
+	if (attempt >= maxRetries || !isRetryableError(error)) return null;
+	const isRateLimited = error.status === 429;
+	const isNetworkFailure = error.status === 0;
+	if (!isSafeMethod && !isRateLimited && !isNetworkFailure) return null;
+	return computeRetryDelay(error, retryDelay, attempt);
+}
+
+// Strip the Rotector success envelope (unless rawResponse) and run the optional
+// parser. Custom APIs pass `rawResponse: true` and unwrap their own envelope in
+// the parse hook so http-client stays envelope-agnostic.
+function finalizePayload<T>(
+	data: unknown,
+	rawResponse: boolean,
+	parse: ((payload: unknown) => T) | undefined
+): T {
+	let payload = data;
+	if (!rawResponse) {
+		if (typeof payload !== 'object' || payload === null || !('data' in payload)) {
+			throw new Error('Invalid response: missing data field');
+		}
+		payload = payload.data;
+	}
+	return parse ? parse(payload) : (payload as T);
+}
+
+async function handleRotectorForbidden(error: ApiError, endpoint: string): Promise<void> {
+	const isMembershipEndpoint = endpoint.startsWith('/v1/extension/membership/');
+	if (error.status !== 403 || isMembershipEndpoint) return;
+
+	if (error.message.includes('Access denied')) {
+		await markSessionRestricted();
+	}
+}
+
+// Endpoints whose 401 specifically means the session token is invalid or
+// revoked. Other endpoints attach the bearer opportunistically (queue,
+// leaderboard) or authenticate via the membership key, so a 401 there must
+// not nuke the session.
+function isSessionAuthEndpoint(endpoint: string): boolean {
+	return (
+		endpoint.startsWith('/v1/me/') ||
+		endpoint === '/v1/auth/roblox/logout' ||
+		endpoint === '/v1/auth/roblox/logout-all'
+	);
+}
+
+async function handleSessionUnauthorized(
+	error: ApiError,
+	sentBearer: boolean,
+	endpoint: string
+): Promise<void> {
+	if (!sentBearer || error.status !== 401) return;
+	if (!isSessionAuthEndpoint(endpoint)) return;
+	await clearStoredAuthToken();
+}
+
+// Owns retries, Retry-After honoring, safe-method gating, envelope unwrapping, and Rotector restricted-access detection
+export async function makeHttpRequest<T = unknown>(
 	endpoint: string,
-	options: { method?: string; timeout?: number } = {}
-): Promise<RawHttpResult> {
-	const { method = 'GET', timeout = 30000 } = options;
-	const url = `${API_CONFIG.BASE_URL}${endpoint}`;
-
-	const headers = new Headers({ Accept: '*/*' });
-
-	// Authenticate with Rotector API
-	const apiKey = await getApiKey();
-	if (apiKey?.trim()) {
-		headers.set('X-Auth-Token', apiKey.trim());
-	}
-
-	const controller = new AbortController();
-	const timeoutId = setTimeout(() => {
-		controller.abort();
-	}, timeout);
-
-	try {
-		logger.debug(`Raw HTTP Request: ${method} ${url}`);
-		const startTime = Date.now();
-
-		const response = await fetch(url, {
-			method,
-			headers,
-			signal: controller.signal
-		});
-
-		const duration = Date.now() - startTime;
-
-		if (!response.ok) {
-			// Error responses may still be JSON even for raw endpoints
-			let errorData: { error?: string; code?: string; type?: string };
-			try {
-				const jsonData: unknown = await response.json();
-				errorData =
-					typeof jsonData === 'object' && jsonData !== null
-						? (jsonData as { error?: string; code?: string; type?: string })
-						: {};
-			} catch {
-				const errorText = await response.text().catch(() => 'Unknown error');
-				errorData = { error: errorText };
-			}
-
-			const error = new Error(
-				errorData.error ?? `HTTP ${response.status}: ${response.statusText}`
-			) as Error & { status: number; code?: string; type?: string };
-
-			Object.assign(error, {
-				status: response.status,
-				...(errorData.code && { code: errorData.code }),
-				...(errorData.type && { type: errorData.type })
-			});
-
-			throw error;
-		}
-
-		const content = await response.text();
-		logger.apiCall(method, url, response.status, duration);
-
-		// Parse filename from Content-Disposition header
-		const disposition = response.headers.get('Content-Disposition');
-		if (!disposition) {
-			throw new Error('Response missing Content-Disposition header');
-		}
-		const filenameMatch = /filename="?([^";\n]+)"?/.exec(disposition);
-		if (!filenameMatch?.[1]) {
-			throw new Error('Content-Disposition header missing filename');
-		}
-		const filename = filenameMatch[1];
-
-		const mimeType = response.headers.get('Content-Type');
-		if (!mimeType) {
-			throw new Error('Response missing Content-Type header');
-		}
-
-		return { content, filename, mimeType };
-	} catch (error) {
-		if ((error as Error).name === 'AbortError') {
-			const timeoutError = new Error(`Request timeout (${timeout}ms)`) as Error & {
-				status: number;
-			};
-			timeoutError.status = 408;
-			throw timeoutError;
-		}
-		throw error;
-	} finally {
-		clearTimeout(timeoutId);
-	}
-}
-
-interface HttpRequestOptions extends RequestInit {
-	timeout?: number;
-	maxRetries?: number;
-	retryDelay?: number;
-	customApi?: CustomApiConfig;
-	requireAuth?: boolean;
-	clientId?: string;
-	lookupContext?: string;
-	readPrimary?: boolean;
-}
-
-// Unified HTTP client for both Rotector and Custom APIs
-export async function makeHttpRequest(
-	endpoint: string,
-	options: HttpRequestOptions = {}
-): Promise<unknown> {
+	options: HttpRequestOptions<T> = {}
+): Promise<T> {
 	const startTime = Date.now();
 	const {
 		timeout = API_CONFIG.TIMEOUT,
 		maxRetries = API_CONFIG.MAX_RETRIES,
 		retryDelay = API_CONFIG.RETRY_DELAY,
 		customApi,
-		requireAuth = false,
 		clientId,
 		lookupContext,
 		readPrimary,
+		rawResponse = false,
+		parse,
+		parseResponse,
+		bearerOverride,
 		...fetchOptions
 	} = options;
 
-	// Determine URL and headers based on API type
+	const effectiveMaxRetries = parseResponse ? 1 : maxRetries;
+
 	const isCustomApi = !!customApi;
 	const url = isCustomApi ? endpoint : `${API_CONFIG.BASE_URL}${endpoint}`;
 
-	const headers = new Headers({
-		'Content-Type': 'application/json',
-		Accept: 'application/json'
+	const headers = await prepareHeaders(fetchOptions.headers, customApi, {
+		clientId,
+		lookupContext,
+		readPrimary,
+		bearerOverride
 	});
-
-	if (fetchOptions.headers) {
-		new Headers(fetchOptions.headers).forEach((value, key) => {
-			headers.set(key, value);
-		});
-	}
-
-	// Add authentication headers
-	if (isCustomApi) {
-		if (customApi.apiKey?.trim()) {
-			headers.set('X-Auth-Token', customApi.apiKey.trim());
-		}
-	} else {
-		const apiKey = await getApiKey();
-		if (apiKey?.trim()) {
-			headers.set('X-Auth-Token', apiKey.trim());
-		}
-
-		if (requireAuth) {
-			const uuid = await getExtensionUuid();
-			if (!uuid) {
-				throw new Error('Extension not authenticated. Please login with Discord.');
-			}
-			headers.set('X-Extension-UUID', uuid);
-		}
-
-		// Add client ID header for integrity verification
-		if (clientId) {
-			headers.set('X-Client-ID', clientId);
-		}
-
-		// Add lookup context header for friend lookups
-		if (lookupContext) {
-			headers.set('X-Lookup-Context', lookupContext);
-		}
-
-		// Force read from primary database to avoid replication lag
-		if (readPrimary) {
-			headers.set('X-Read-Primary', 'true');
-		}
-	}
+	const sentBearer = !isCustomApi && headers.has('Authorization');
 
 	const method = (fetchOptions.method ?? 'GET').toUpperCase();
 	const isSafeMethod = ['GET', 'HEAD', 'OPTIONS'].includes(method);
 
 	let lastError: Error | null = null;
 
-	for (let attempt = 1; attempt <= maxRetries; attempt++) {
+	for (let attempt = 1; attempt <= effectiveMaxRetries; attempt++) {
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => {
 			controller.abort();
@@ -292,146 +291,59 @@ export async function makeHttpRequest(
 		};
 
 		try {
-			logger.debug(`HTTP Request attempt ${attempt}: ${method} ${url}`);
+			logger.debug(`HTTP Request attempt ${String(attempt)}: ${method} ${url}`);
 
 			const response = await fetch(url, requestOptions);
 			const duration = Date.now() - startTime;
 
 			if (!response.ok) {
-				let errorData: {
-					error?: string;
-					requestId?: string;
-					code?: string;
-					type?: string;
-				};
-				try {
-					const jsonData: unknown = await response.json();
-					errorData =
-						typeof jsonData === 'object' && jsonData !== null
-							? (jsonData as {
-									error?: string;
-									requestId?: string;
-									code?: string;
-									type?: string;
-								})
-							: {};
-				} catch {
-					const errorText = await response.text().catch(() => 'Unknown error');
-					errorData = { error: errorText };
-				}
+				throw await buildHttpError(response);
+			}
 
-				const error = new Error(
-					errorData.error ?? `HTTP ${response.status}: ${response.statusText}`
-				) as Error & {
-					status: number;
-					requestId?: string;
-					code?: string;
-					type?: string;
-					rateLimitReset?: number;
-				};
+			if (!isCustomApi) {
+				await processRotectorResponseHeaders(response.headers);
+			}
 
-				Object.assign(error, {
-					status: response.status,
-					...(errorData.requestId && { requestId: errorData.requestId }),
-					...(errorData.code && { code: errorData.code }),
-					...(errorData.type && { type: errorData.type })
-				});
-
-				// Capture Retry-After for 429 responses
-				if (response.status === 429) {
-					const retryAfter = response.headers.get('Retry-After');
-					if (retryAfter) {
-						error.rateLimitReset = Math.ceil(Date.now() / 1000) + Number(retryAfter);
-					}
-				}
-
-				throw error;
+			if (parseResponse) {
+				const result = await parseResponse(response);
+				logger.apiCall(method, url, response.status, duration);
+				return result;
 			}
 
 			if (response.status === 204) {
 				logger.apiCall(method, url, response.status, duration);
-				return null;
+				return null as T;
 			}
 
-			let data: unknown = await response.json();
+			const data: unknown = await response.json();
 			logger.apiCall(method, url, response.status, duration);
 
-			// Proactively wait when rate limit is exhausted
-			const rateLimitRemaining = response.headers.get('X-RateLimit-Remaining');
-			const rateLimitReset = response.headers.get('X-RateLimit-Reset');
-			if (rateLimitRemaining !== null && rateLimitReset !== null) {
-				const remaining = Number(rateLimitRemaining);
-				if (remaining <= 0) {
-					const waitMs = Number(rateLimitReset) * 1000 - Date.now() + 500;
-					if (waitMs > 0) {
-						logger.debug(`Rate limit exhausted, waiting ${waitMs}ms for reset`);
-						await new Promise((resolve) => setTimeout(resolve, waitMs));
-					}
-				}
-			}
+			await maybeWaitForRateLimit(response.headers);
 
-			// Unwrap custom API response if needed
-			if (isCustomApi) {
-				data = unwrapCustomApiResponse(data);
-			}
-
-			return data;
+			return finalizePayload(data, rawResponse, parse);
 		} catch (error) {
-			lastError = error as Error;
+			lastError = normalizeFetchError(error, timeout);
 			const duration = Date.now() - startTime;
 
-			if (lastError.name === 'AbortError') {
-				const timeoutError = new Error(`Request timeout (${timeout}ms)`) as Error & {
-					status?: number;
-				};
-				timeoutError.status = 408;
-				lastError = timeoutError;
-			}
+			logger.warn(
+				`HTTP request failed (attempt ${String(attempt)}/${String(effectiveMaxRetries)})`,
+				{
+					url,
+					error: lastError.message,
+					duration
+				}
+			);
 
-			// Network failure
-			if (!('status' in lastError) && lastError instanceof TypeError) {
-				const networkError = new Error(
-					'Unable to connect. Check your internet connection and try again.'
-				) as Error & { status?: number };
-				networkError.status = 0;
-				lastError = networkError;
-			}
-
-			logger.warn(`HTTP request failed (attempt ${attempt}/${maxRetries})`, {
-				url,
-				error: lastError.message,
-				duration
-			});
-
-			// Retry on retryable errors
-			const errStatus = (lastError as Error & { status?: number }).status;
-			const isRateLimited = errStatus === 429;
-			const isNetworkFailure = errStatus === 0;
-			if (
-				attempt < maxRetries &&
-				isRetryableError(lastError) &&
-				(isSafeMethod || isRateLimited || isNetworkFailure)
-			) {
-				const delay = computeRetryDelay(lastError, retryDelay, attempt);
-				logger.debug(`Retrying in ${delay}ms...`);
+			const delay = decideRetry(lastError, attempt, effectiveMaxRetries, retryDelay, isSafeMethod);
+			if (delay !== null) {
+				logger.debug(`Retrying in ${String(delay)}ms...`);
 				await new Promise((resolve) => setTimeout(resolve, delay));
 				continue;
 			}
 
 			if (!isCustomApi) {
-				const err = lastError as Error & { status?: number };
-
-				// Handle 403 responses
-				if (err.status === 403) {
-					if (requireAuth && err.message.includes('UUID invalidated')) {
-						await browser.storage.local.remove(['extension_uuid']);
-						logger.info('Stored UUID cleared due to invalidation');
-					}
-
-					if (err.message.includes('Access denied')) {
-						await markAccessRestricted();
-					}
-				}
+				await handleRotectorForbidden(lastError, endpoint);
+				await handleSessionUnauthorized(lastError, sentBearer, endpoint);
 			}
 
 			break;

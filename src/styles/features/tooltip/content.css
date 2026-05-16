@@ -3,23 +3,26 @@
    ================================= */
 
 @utility tooltip-status-badge {
-	@apply inline-flex items-center mt-2 px-2 py-0.5 text-base font-medium rounded-xl;
+	@apply text-sm-plus mt-2 inline-flex items-center rounded-sm py-0.5 font-medium whitespace-nowrap;
+	letter-spacing: -0.005em;
+	padding-left: 0.5rem;
+	padding-right: 0.625rem;
 
 	.status-indicator {
-		@apply inline-block w-2 h-2 rounded-full mr-1.5;
+		@apply mr-1.5 inline-block h-2 w-2 rounded-full;
 	}
 
 	&.safe {
-		@apply bg-gray-500/20;
+		background-color: color-mix(in srgb, var(--color-text-subtle) 12%, transparent);
 		color: var(--color-text-heading);
 
 		.status-indicator {
-			background-color: var(--color-text-heading);
+			background-color: var(--color-text-subtle);
 		}
 	}
 
 	&.unsafe {
-		@apply bg-red-500/15;
+		background-color: color-mix(in srgb, var(--color-status-unsafe) 12%, transparent);
 		color: var(--color-status-unsafe);
 
 		.status-indicator {
@@ -28,7 +31,7 @@
 	}
 
 	&.pending {
-		@apply bg-orange-500/15;
+		background-color: color-mix(in srgb, var(--color-status-pending) 12%, transparent);
 		color: var(--color-status-pending);
 
 		.status-indicator {
@@ -37,7 +40,7 @@
 	}
 
 	&.error {
-		@apply bg-gray-500/15;
+		background-color: color-mix(in srgb, var(--color-status-error) 12%, transparent);
 		color: var(--color-status-error);
 
 		.status-indicator {
@@ -45,17 +48,8 @@
 		}
 	}
 
-	&.integration {
-		@apply bg-teal-500/15;
-		color: var(--color-status-integration);
-
-		.status-indicator {
-			background-color: var(--color-status-integration);
-		}
-	}
-
 	&.past-offender {
-		@apply bg-blue-500/15;
+		background-color: color-mix(in srgb, var(--color-status-past-offender) 12%, transparent);
 		color: var(--color-status-past-offender);
 
 		.status-indicator {
@@ -64,7 +58,7 @@
 	}
 
 	&.mixed {
-		@apply bg-orange-500/15;
+		background-color: color-mix(in srgb, var(--color-status-mixed) 12%, transparent);
 		color: var(--color-status-mixed);
 
 		.status-indicator {
@@ -73,33 +67,56 @@
 	}
 }
 
-@utility tooltip-badge {
-	@apply inline-flex items-center justify-center px-2 py-0.5 rounded-xl text-xs font-semibold uppercase tracking-wider;
-}
-
-@utility tooltip-badge-reportable {
-	@apply tooltip-badge text-white;
-	background-color: var(--color-status-unsafe);
-}
-
-@utility tooltip-badge-queued {
-	@apply tooltip-badge text-white;
-	background-color: var(--color-status-queued);
-}
-
-@utility tooltip-badge-integration {
-	@apply tooltip-badge text-white;
-	background-color: var(--color-status-integration);
+@utility tooltip-status-category {
+	@apply text-sm-plus ms-0.5 whitespace-nowrap opacity-70;
+	letter-spacing: -0.005em;
 }
 
 @utility custom-api-badges {
-	@apply flex flex-wrap gap-1.5 mt-1.5 mb-2 justify-center;
+	@apply mt-1.5 mb-2 flex flex-wrap justify-center gap-1.5;
 }
 
 @utility custom-api-badge {
-	@apply inline-flex items-center justify-center px-2 py-0.5 rounded-xl text-xs font-semibold uppercase tracking-wider;
+	@apply text-2xs inline-flex items-center justify-center rounded-full px-2 py-0.5 font-semibold uppercase;
+	letter-spacing: 0.08em;
 	background-color: var(--color-status-integration);
 	color: white;
+}
+
+/* =================================
+   INDICATOR HINTS
+   ================================= */
+
+@utility info-hint-unseen {
+	color: var(--color-primary);
+
+	&::after {
+		@apply pointer-events-none absolute inset-s-1/2 inset-bs-1/2 -mt-2 -ml-2 h-4 w-4 rounded-full;
+		content: '';
+		border: 1.5px solid color-mix(in srgb, var(--color-primary) 60%, transparent);
+		animation: info-hint-ping 2.4s ease-out infinite;
+	}
+
+	&.outfit-only-indicator::after {
+		left: 0.375rem;
+	}
+}
+
+@keyframes info-hint-ping {
+	0% {
+		transform: scale(0.8);
+		opacity: 0.55;
+	}
+
+	80% {
+		transform: scale(2.2);
+		opacity: 0;
+	}
+
+	100% {
+		transform: scale(2.2);
+		opacity: 0;
+	}
 }
 
 /* =================================
@@ -107,13 +124,12 @@
    ================================= */
 
 @utility tooltip-divider {
-	@apply my-2 border-t;
-	border-color: var(--color-tooltip-divider);
+	@apply my-2 border-bs;
+	border-color: var(--color-border-subtle);
 }
 
 @utility reportable-pill {
-	@apply inline-flex items-center gap-1 text-xs font-medium no-underline cursor-pointer ml-auto border-none;
-	background: none;
+	@apply ms-auto inline-flex cursor-pointer items-center gap-1 border-none bg-transparent text-xs font-medium no-underline;
 	color: var(--color-status-unsafe);
 	opacity: 0.8;
 	transition: opacity 0.15s ease;
@@ -125,19 +141,17 @@
 }
 
 @utility tooltip-hover-popover {
-	@apply fixed z-[10006];
+	@apply pointer-events-auto fixed z-10006 rounded-md;
 	width: 240px;
-	padding: 8px 10px;
-	border: 1px solid var(--color-border);
-	border-radius: 6px;
+	padding: 0.5rem 0.625rem;
+	border: 1px solid var(--color-border-subtle);
 	background-color: var(--color-bg-content);
-	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-	pointer-events: auto;
+	box-shadow: var(--shadow-soft);
 	cursor: default;
 }
 
 @utility outfit-only-indicator {
-	@apply relative inline-flex items-center gap-1 text-xs font-medium cursor-help ml-auto border-none bg-transparent p-0;
+	@apply relative ms-auto inline-flex cursor-help items-center gap-1 border-none bg-transparent p-0 text-xs font-medium;
 	color: var(--color-status-outfit);
 	opacity: 0.8;
 
@@ -150,51 +164,54 @@
 	@apply tooltip-hover-popover;
 
 	strong {
-		@apply block text-sm font-semibold mb-0.5;
+		@apply mb-0.5 block text-sm font-semibold;
 		color: var(--color-status-outfit);
 	}
 
 	p {
-		@apply text-sm leading-normal m-0 font-normal;
+		@apply m-0 text-sm leading-normal font-normal;
 		color: var(--color-text);
 	}
 }
 
 @utility restricted-access-notice {
-	@apply flex gap-2.5 p-3 rounded mt-1.5;
-	background-color: rgba(127, 29, 29, 0.15);
+	@apply mt-1.5 flex gap-2.5 rounded-md p-3;
+	background-color: color-mix(in srgb, var(--color-status-unsafe) 12%, transparent);
+	border: 1px solid color-mix(in srgb, var(--color-status-unsafe) 25%, transparent);
 }
 
 @utility restricted-access-icon {
-	@apply flex-shrink-0;
+	@apply shrink-0;
 	color: var(--color-status-unsafe);
 }
 
 @utility restricted-access-text {
-	@apply flex-1 text-left;
+	@apply flex-1 text-start;
 
 	strong {
-		@apply block mb-1 text-left text-base;
+		@apply mb-1 block text-start text-base;
 		color: var(--color-status-unsafe);
 	}
 
 	p {
-		@apply m-0 text-sm leading-normal text-left;
+		@apply m-0 text-start text-sm leading-normal;
 		color: var(--color-text);
 	}
 }
 
 @utility restricted-appeal-link {
-	@apply block border-none rounded px-2.5 py-1.5 mt-2 text-xs font-medium cursor-pointer no-underline text-center transition-colors duration-200 text-white;
+	@apply mt-2 block cursor-pointer rounded-md border-none px-2.5 py-1.5 text-center text-xs font-medium text-white no-underline;
 	background-color: var(--color-status-unsafe);
+	transition: background-color 0.15s ease;
 
 	&:hover {
 		@apply no-underline;
-		background-color: #ff2222;
+		background-color: color-mix(in srgb, var(--color-status-unsafe) 85%, black);
 	}
 
-	&:active {
-		background-color: #e03333;
+	&:focus-visible {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 1px;
 	}
 }
 
@@ -203,14 +220,13 @@
    ================================= */
 
 @utility tooltip-metadata {
-	@apply flex flex-wrap gap-2 mt-3 justify-center;
+	@apply mt-3 flex flex-wrap justify-center gap-2;
 	padding: 4px 0;
 }
 
 @utility tooltip-metadata-item {
-	@apply flex items-center gap-1.5 text-2xs font-normal px-2 py-1;
+	@apply text-2xs flex items-center gap-1.5 px-2 py-1 font-normal whitespace-nowrap;
 	color: var(--color-text-tertiary);
-	opacity: 0.8;
 
 	&.processing {
 		color: var(--color-status-checking);
@@ -218,7 +234,7 @@
 }
 
 @utility tooltip-metadata-icon {
-	@apply flex-shrink-0;
+	@apply shrink-0;
 	opacity: 0.7;
 }
 
@@ -231,22 +247,19 @@
 }
 
 @utility tooltip-metadata-reprocess {
-	@apply flex items-center gap-1.5 text-2xs font-medium px-2 py-1;
+	@apply text-2xs flex cursor-pointer items-center gap-1.5 rounded-sm border-none bg-transparent px-2 py-1 font-medium;
 	color: var(--color-warning);
-	background: transparent;
-	border: none;
-	cursor: pointer;
-	transition: all 0.15s ease;
-	opacity: 0.9;
+	transition:
+		background-color 0.15s ease,
+		color 0.15s ease;
 
 	&:hover {
-		opacity: 1;
-		background: rgba(255, 152, 0, 0.15);
-		border-radius: 3px;
+		background-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
 	}
 
-	&:active {
-		background: rgba(255, 152, 0, 0.25);
+	&:focus-visible {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 1px;
 	}
 }
 
@@ -255,10 +268,7 @@
    ================================= */
 
 @utility safe-reasons-toggle {
-	@apply w-full flex items-center justify-center gap-1.5 mb-2 text-sm font-medium cursor-pointer;
-	background: transparent;
-	border: none;
-	padding: 0;
+	@apply mb-2 flex cursor-pointer items-center justify-center gap-1.5 border-none bg-transparent p-0 text-sm font-medium inline-full;
 	color: var(--color-text-subtle);
 	transition: color 0.15s ease;
 
@@ -268,21 +278,22 @@
 }
 
 @utility safe-reasons-list {
-	@apply list-disc m-0 px-5 py-3 mt-2 space-y-1.5 rounded;
+	@apply m-0 mt-2 list-disc space-y-1.5 rounded-md px-5 py-3;
 	background-color: var(--color-reason-bg);
+	border: 1px solid var(--color-border-subtle);
 }
 
 @utility safe-reasons-item {
-	@apply text-sm leading-relaxed;
+	@apply text-sm-plus leading-relaxed;
 	color: var(--color-text);
 }
 
 @utility safe-reasons-link {
+	@apply underline;
 	color: var(--color-primary);
-	text-decoration: underline;
 
 	&:hover {
-		text-decoration: none;
+		@apply no-underline;
 	}
 }
 
@@ -291,33 +302,26 @@
    ================================= */
 
 @utility queue-button {
-	@apply text-white border rounded-lg px-3 py-1.5 text-sm font-medium cursor-pointer transition-all duration-200 text-center flex-1 m-0;
-	background: linear-gradient(135deg, #3f7ee3, #2c5eb8);
-	border-color: #3f7ee3;
+	@apply text-sm-plus m-0 flex-1 cursor-pointer rounded-md border-none px-3 py-2 text-center font-medium text-white;
+	background-color: var(--color-primary);
+	transition:
+		background-color 0.15s ease,
+		color 0.15s ease;
 
-	&:hover {
-		background: linear-gradient(135deg, #5da0ff, #3f7ee3);
-		border-color: #5da0ff;
-		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+	&:hover:not(.queue-button-disabled) {
+		background-color: var(--color-primary-hover);
 	}
 
-	&:active {
-		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+	&:focus-visible {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 2px;
 	}
 }
 
 @utility queue-button-disabled {
-	@apply cursor-not-allowed;
-	background: linear-gradient(135deg, #6b7280, #4b5563);
-	border-color: #6b7280;
-	opacity: 0.7;
-
-	&:hover {
-		@apply translate-y-0;
-		background: linear-gradient(135deg, #6b7280, #4b5563);
-		border-color: #6b7280;
-		box-shadow: none;
-	}
+	@apply cursor-not-allowed opacity-60;
+	background-color: var(--color-bg-tertiary);
+	color: var(--color-text-subtle);
 }
 
 /* =================================
@@ -325,7 +329,7 @@
    ================================= */
 
 @utility translate-status-container {
-	@apply flex items-center gap-1.5 justify-center mb-2;
+	@apply mb-2 flex items-center justify-center gap-1.5;
 }
 
 @utility translate-status-text {
@@ -339,21 +343,21 @@
 }
 
 @utility translation-toggle-container {
-	@apply flex justify-center mb-2;
+	@apply mb-2 flex justify-center;
 }
 
 @utility translation-toggle-button {
-	@apply flex items-center gap-1 px-2 py-0.5 text-3xs font-normal border-none cursor-pointer transition-all duration-200;
-	background: transparent;
-	color: var(--color-text-tertiary);
-	opacity: 0.7;
+	@apply text-2xs flex cursor-pointer items-center gap-1 rounded-sm border-none bg-transparent px-2 py-0.5 font-medium;
+	color: var(--color-text-subtle);
+	transition: color 0.15s ease;
 
 	&:hover {
-		opacity: 1;
+		color: var(--color-text);
 	}
 
-	&:active {
-		opacity: 0.8;
+	&:focus-visible {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 1px;
 	}
 }
 
@@ -361,34 +365,36 @@
    VIOLATION REASONS & EVIDENCE
    ================================= */
 
+@utility inline-image {
+	img {
+		display: inline-block;
+		width: 1em;
+		height: 1em;
+		vertical-align: -0.125em;
+		object-fit: contain;
+	}
+}
+
 @utility reasons-container {
-	@apply text-left mt-2;
+	@apply mt-2 flex flex-col gap-2 text-start;
 }
 
 @utility reason-item {
-	@apply mb-3 rounded-md p-2.5;
+	@apply rounded-md p-2.5;
 	background-color: var(--color-reason-bg);
-
-	&:last-child {
-		@apply mb-0;
-	}
+	border: 1px solid var(--color-border-subtle);
 }
 
 @utility reason-header {
-	@apply font-semibold mb-1 flex items-center gap-2;
+	@apply mb-1 flex items-center gap-2 font-semibold;
 	color: var(--color-reason-header);
-	font-size: 17px;
-
-	&.integration {
-		color: var(--color-status-integration);
-	}
+	font-size: 0.9375rem;
+	letter-spacing: -0.005em;
 }
 
 @utility cross-signal-indicator {
-	@apply relative inline-flex items-center cursor-help border-none bg-transparent p-0;
+	@apply relative inline-flex cursor-help items-center border-none bg-transparent p-0;
 	color: var(--color-text-subtle);
-	font: inherit;
-	line-height: inherit;
 }
 
 @utility cross-signal-popover {
@@ -401,13 +407,13 @@
 	}
 
 	p {
-		@apply text-sm leading-normal m-0 font-normal;
+		@apply m-0 text-sm leading-normal font-normal;
 		color: var(--color-text);
 	}
 }
 
 @utility reason-message {
-	@apply text-base leading-normal mb-2 whitespace-pre-wrap;
+	@apply inline-image mb-2 text-sm leading-normal whitespace-pre-wrap;
 	color: var(--color-reason-message);
 }
 
@@ -415,30 +421,77 @@
 	@apply mt-2 space-y-1;
 }
 
-@utility evidence-item {
-	@apply text-base px-2 py-1 rounded;
+@utility evidence-chrome {
+	@apply rounded-md px-2 py-1 text-sm font-normal;
 	overflow-wrap: break-word;
 	background-color: var(--color-evidence-bg);
 	color: var(--color-evidence-text);
-	border: 1px solid var(--color-evidence-border);
+	border: 1px solid var(--color-border-subtle);
+}
+
+@utility evidence-item {
+	@apply evidence-chrome inline-image;
+}
+
+@utility decoded-evidence-item {
+	@apply evidence-chrome flex flex-col gap-1;
+}
+
+@utility decoded-evidence-text {
+	@apply inline-image text-sm leading-normal;
+	color: var(--color-evidence-text);
+	overflow-wrap: break-word;
+}
+
+@utility decoded-evidence-chip {
+	@apply text-2xs inline-flex cursor-pointer items-center gap-1 rounded-sm border-none font-medium;
+	padding: 0.1875rem 0.4375rem;
+	letter-spacing: 0.02em;
+	color: var(--color-text-subtle);
+	background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);
+	transition:
+		background-color 0.15s ease,
+		color 0.15s ease;
+
+	&:hover {
+		background-color: color-mix(in srgb, var(--color-primary) 18%, transparent);
+		color: var(--color-text);
+	}
+
+	&:focus-visible {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 1px;
+	}
+}
+
+@utility decoded-evidence-action {
+	color: var(--color-primary);
+}
+
+@utility decoded-evidence-original {
+	@apply mt-0.5 pt-1 text-xs leading-normal;
+	color: var(--color-text-subtle);
+	overflow-wrap: break-word;
+	font-family: ui-monospace, monospace;
+	border-top: 1px solid var(--color-border-subtle);
 }
 
 @utility source-evidence-item {
-	@apply evidence-item;
+	@apply evidence-chrome;
 }
 
 @utility source-evidence-header {
-	@apply flex items-center mb-1;
+	@apply mb-1 flex items-center;
 }
 
 @utility source-evidence-badge {
-	@apply px-1.5 py-0.5 rounded text-xs font-bold uppercase;
+	@apply rounded-sm px-1.5 py-0.5 text-xs font-bold whitespace-nowrap uppercase;
 	background-color: var(--color-evidence-border);
 	color: var(--color-text);
 }
 
 @utility source-info-indicator {
-	@apply relative inline-flex items-center cursor-help ml-auto border-none bg-transparent p-0;
+	@apply relative ms-auto inline-flex cursor-help items-center border-none bg-transparent p-0;
 	color: var(--color-text-subtle);
 	font: inherit;
 	line-height: inherit;
@@ -454,27 +507,19 @@
 	}
 
 	p {
-		@apply text-sm leading-normal m-0 font-normal;
+		@apply m-0 text-sm leading-normal font-normal;
 		color: var(--color-text);
 	}
 
 	.source-info-list {
+		@apply m-0 flex list-disc flex-col pl-4;
 		margin-top: 4px;
-		display: flex;
-		flex-direction: column;
 		gap: 2px;
 	}
 
 	.source-info-list-item {
 		@apply text-sm leading-normal font-normal;
 		color: var(--color-text);
-		display: flex;
-		gap: 4px;
-
-		&::before {
-			content: '•';
-			flex-shrink: 0;
-		}
 
 		strong {
 			@apply inline text-sm font-semibold;
@@ -493,7 +538,7 @@
 }
 
 @utility source-evidence-description {
-	@apply text-base leading-tight;
+	@apply inline-image text-sm leading-tight;
 	color: var(--color-evidence-text);
 }
 
@@ -502,34 +547,105 @@
 }
 
 @utility source-evidence-subitem {
-	@apply text-sm leading-tight;
+	@apply inline-image text-xs leading-tight;
 	color: var(--color-evidence-text);
 }
 
 @utility outfit-evidence-item {
-	@apply evidence-item;
+	@apply evidence-chrome flex items-start gap-2;
 	background-color: var(--color-outfit-evidence-bg);
-	border-color: var(--color-status-outfit);
+	border-color: color-mix(in srgb, var(--color-status-outfit) 35%, transparent);
+}
+
+@utility outfit-evidence-body {
+	@apply flex min-w-0 flex-1 flex-col;
 }
 
 @utility outfit-evidence-header {
-	@apply flex justify-between items-center mb-1;
+	@apply mb-1 flex items-center justify-between;
 }
 
 @utility outfit-evidence-name {
-	@apply font-semibold text-base text-left;
+	@apply min-w-0 flex-1 truncate text-start text-sm font-semibold;
 	color: var(--color-text);
 }
 
 @utility outfit-confidence-badge {
-	@apply px-1.5 py-0.5 rounded text-xs font-bold;
+	@apply text-2xs rounded-sm px-1.5 py-0.5 font-bold;
 	background-color: var(--color-status-outfit);
 	color: white;
+	letter-spacing: 0.02em;
 }
 
 @utility outfit-reason {
-	@apply text-base leading-tight;
+	@apply inline-image text-sm leading-tight;
 	color: var(--color-evidence-text);
+}
+
+@utility outfit-snapshot-thumb {
+	@apply relative flex h-14 w-14 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-md border bg-transparent p-0;
+	border-color: color-mix(in srgb, var(--color-status-outfit) 35%, transparent);
+	transition: border-color 180ms ease;
+
+	&:hover:not(:disabled) {
+		border-color: color-mix(in srgb, var(--color-status-outfit) 80%, transparent);
+	}
+
+	&:hover:not(:disabled) .outfit-snapshot-img {
+		transform: scale(1.12);
+	}
+
+	&:focus-visible {
+		outline: 2px solid var(--color-status-outfit);
+		outline-offset: 2px;
+	}
+}
+
+@utility outfit-snapshot-thumb-empty {
+	@apply cursor-default opacity-[0.55];
+}
+
+@utility outfit-snapshot-img {
+	@apply block object-cover block-full inline-full;
+	transition: transform 320ms ease-out;
+}
+
+@utility outfit-snapshot-skeleton {
+	@apply relative overflow-hidden block-full inline-full;
+	background-color: color-mix(in srgb, var(--color-status-outfit) 12%, transparent);
+
+	&::after {
+		@apply shimmer absolute inset-0;
+		content: '';
+		background: linear-gradient(90deg, transparent, rgb(255 255 255 / 12%), transparent);
+		background-size: 200% 100%;
+	}
+}
+
+@utility outfit-snapshot-multi-overlay {
+	@apply absolute inset-0 flex flex-col items-center justify-center backdrop-blur-[2px];
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--primitive-black) 15%, transparent) 0%,
+		color-mix(in srgb, var(--primitive-black) 60%, transparent) 100%
+	);
+}
+
+@utility outfit-snapshot-count {
+	@apply text-base leading-none font-bold;
+	color: var(--primitive-white);
+	font-family: ui-monospace, monospace;
+}
+
+@utility outfit-snapshot-count-label {
+	@apply text-2xs mt-0.5 uppercase;
+	letter-spacing: 0.1em;
+	color: color-mix(in srgb, var(--primitive-white) 80%, transparent);
+}
+
+@utility outfit-snapshot-placeholder-icon {
+	@apply opacity-50;
+	color: var(--color-text-subtle);
 }
 
 /* =================================
@@ -537,62 +653,44 @@
    ================================= */
 
 @utility moderators-text {
+	@apply font-semibold;
 	color: var(--color-status-unsafe);
-	font-weight: 600;
 }
 
 @utility reviewer-section {
-	@apply p-0 pb-2 my-2 flex items-center gap-1.5 bg-transparent border-none text-center justify-center;
+	@apply my-2 flex flex-nowrap items-center justify-center gap-1.5 border-none bg-transparent p-0 pb-2 text-center;
 }
 
 @utility reviewer-text {
-	@apply text-xs-plus font-normal leading-tight;
+	@apply text-xs-plus leading-tight font-normal whitespace-nowrap;
 	color: var(--color-text-subtle);
 }
 
 @utility reviewer-name {
-	@apply font-semibold;
+	@apply font-semibold whitespace-nowrap;
 	color: var(--color-text);
 }
 
 @utility reviewer-anonymous-indicator {
-	@apply relative inline-flex items-center cursor-help;
+	@apply relative inline-flex cursor-help items-center border-none bg-transparent p-0;
 	color: var(--color-text-subtle);
-
-	&:hover .reviewer-anonymous-popover {
-		@apply visible opacity-100;
-	}
 }
 
 @utility reviewer-anonymous-popover {
-	@apply absolute invisible opacity-0 z-10;
-	transition:
-		opacity 0.15s ease,
-		visibility 0.15s ease;
-	top: calc(100% + 6px);
-	left: 50%;
-	transform: translateX(-50%);
-	width: 240px;
-	padding: 8px 10px;
-	background-color: var(--color-bg-content);
-	border: 1px solid var(--color-border);
-	border-radius: 6px;
-	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+	@apply tooltip-hover-popover;
 
 	strong {
-		@apply block text-sm font-semibold;
+		@apply mb-0.5 block text-sm font-semibold;
 		color: var(--color-primary);
-		margin-bottom: 2px;
 	}
 
 	p {
-		@apply text-sm leading-normal m-0 font-normal;
+		@apply m-0 text-sm leading-normal font-normal;
 		color: var(--color-text);
 	}
 }
 
 @utility error-details {
-	@apply mt-1.5 pt-1.5 text-xs-plus whitespace-pre-wrap break-words border-t text-left;
-	border-color: var(--color-border);
+	@apply text-xs-plus text-start wrap-break-word whitespace-pre-wrap;
 	color: var(--color-text-subtle);
 }

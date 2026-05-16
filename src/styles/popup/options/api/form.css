@@ -1,0 +1,146 @@
+/* =================================
+   FORM LAYOUT
+   ================================= */
+
+@utility custom-api-form {
+	@apply flex flex-col;
+	gap: 0.875rem;
+}
+
+@utility form-field {
+	@apply flex flex-col gap-1;
+}
+
+@utility form-label {
+	@apply flex items-center gap-1 text-xs font-medium;
+	color: var(--color-text);
+
+	& .required {
+		color: var(--color-error);
+		margin-left: 0.125rem;
+	}
+}
+
+@utility form-input {
+	@apply text-sm-plus rounded-sm inline-full;
+	padding: 0.4375rem 0.625rem;
+	font-family: inherit;
+	color: var(--color-text);
+	background-color: var(--color-bg-content);
+	border: 1px solid var(--color-border-subtle);
+	transition: border-color 0.15s ease;
+
+	&::placeholder {
+		color: var(--color-placeholder);
+	}
+
+	&:hover:not(:focus, .error) {
+		border-color: var(--color-border);
+	}
+
+	&:focus {
+		@apply outline-none;
+		border-color: var(--color-primary);
+	}
+
+	&.error {
+		border-color: var(--color-error);
+
+		&:focus {
+			border-color: var(--color-error);
+		}
+	}
+}
+
+@utility form-hint {
+	@apply text-xs-plus;
+	color: var(--color-text-tertiary);
+	line-height: 1.4;
+}
+
+@utility form-error {
+	@apply text-xs-plus;
+	color: var(--color-error);
+	line-height: 1.4;
+}
+
+/* =================================
+   FILE INPUT
+   ================================= */
+
+@utility form-file-input {
+	@apply sr-only;
+}
+
+@utility form-file-upload {
+	@apply text-sm-plus inline-flex cursor-pointer items-center self-start rounded-sm font-medium;
+	gap: 0.375rem;
+	padding: 0.4375rem 0.75rem;
+	color: var(--color-text-subtle);
+	background-color: var(--color-bg-content);
+	border: 1px solid var(--color-border-subtle);
+	transition:
+		color 0.15s ease,
+		border-color 0.15s ease,
+		background-color 0.15s ease;
+
+	&:hover {
+		color: var(--color-text);
+		border-color: var(--color-border);
+		background-color: var(--color-hover);
+	}
+
+	&:focus-within {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 1px;
+	}
+}
+
+/* =================================
+   IMAGE PREVIEW
+   ================================= */
+
+@utility api-form-image-preview {
+	@apply flex flex-col items-start gap-2 rounded-sm;
+	padding: 0.625rem;
+	background-color: var(--color-bg-tertiary);
+	border: 1px solid var(--color-border-subtle);
+}
+
+@utility api-form-image-preview-frame {
+	@apply flex items-center justify-center rounded-sm;
+	padding: 0.375rem 0.5rem;
+	background-color: var(--color-bg-content);
+	border: 1px solid var(--color-border-subtle);
+
+	& img {
+		@apply block;
+		max-width: 240px;
+		max-height: 72px;
+		width: auto;
+		height: auto;
+		object-fit: contain;
+	}
+}
+
+@utility api-form-image-remove {
+	@apply inline-flex cursor-pointer items-center rounded-sm text-xs font-medium;
+	gap: 0.3125rem;
+	padding: 0.3125rem 0.625rem;
+	color: var(--color-error);
+	background-color: transparent;
+	border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
+	transition:
+		background-color 0.15s ease,
+		border-color 0.15s ease;
+
+	&:hover {
+		background-color: color-mix(in srgb, var(--color-error) 10%, transparent);
+		border-color: color-mix(in srgb, var(--color-error) 50%, transparent);
+	}
+
+	&:focus-visible {
+		outline: 2px solid var(--color-error);
+		outline-offset: 1px;
+	}
+}

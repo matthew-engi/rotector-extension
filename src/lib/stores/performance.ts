@@ -1,25 +1,26 @@
 import { derived } from 'svelte/store';
+import { STORAGE_KEYS } from '../types/constants';
 import {
 	TRACE_CATEGORIES,
 	type CategoryStats,
 	type PerformanceEntry,
 	type TraceCategory
 } from '../types/performance';
+import { generateLocalId } from '../utils/id';
 import { createPersistentListStore } from './persistent-list-store';
 
 const {
-	store: performanceEntriesStore,
-	load,
+	store: performanceEntries,
+	load: loadPerformanceEntries,
 	add,
-	clear
+	clear: clearPerformanceEntries
 } = createPersistentListStore<PerformanceEntry>({
-	storageKey: 'performanceEntries',
+	storageKey: STORAGE_KEYS.PERFORMANCE_ENTRIES,
 	maxEntries: 200
 });
 
-export const performanceEntries = performanceEntriesStore;
+export { performanceEntries, loadPerformanceEntries, clearPerformanceEntries };
 
-// Aggregate stats by category
 export const categoryStats = derived(performanceEntries, ($entries): CategoryStats[] => {
 	const categories = Object.values(TRACE_CATEGORIES) as TraceCategory[];
 
@@ -45,16 +46,11 @@ export const categoryStats = derived(performanceEntries, ($entries): CategorySta
 		.filter((s): s is CategoryStats => s !== null);
 });
 
-// Top 10 slowest operations
 export const slowestOperations = derived(performanceEntries, ($entries): PerformanceEntry[] => {
-	return [...$entries].sort((a, b) => b.duration - a.duration).slice(0, 10);
+	return $entries.toSorted((a, b) => b.duration - a.duration).slice(0, 10);
 });
 
-export const loadPerformanceEntries = load;
-export const clearPerformanceEntries = clear;
-
-// Add a new entry with auto-generated ID
+// ID is auto-generated and callers pass everything else
 export async function addPerformanceEntry(entry: Omit<PerformanceEntry, 'id'>): Promise<void> {
-	const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-	return add({ ...entry, id });
+	return add({ ...entry, id: generateLocalId() });
 }

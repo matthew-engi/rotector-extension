@@ -14,7 +14,7 @@
 	--text-sm-plus--line-height: 1.4;
 
 	/* Font families */
-	--font-system: 'Builder Sans', Helvetica, Arial, sans-serif;
+	--font-system: 'Builder Sans', helvetica, arial, sans-serif;
 }
 
 /* =================================
@@ -38,8 +38,4 @@
 @utility text-sm-plus {
 	font-size: var(--text-sm-plus);
 	line-height: var(--text-sm-plus--line-height);
-}
-
-@utility font-system {
-	font-family: var(--font-system);
 }

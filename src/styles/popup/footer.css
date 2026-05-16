@@ -1,0 +1,68 @@
+/* =================================
+   FOOTER COMPONENT STYLES
+   ================================= */
+
+@utility footer-container {
+	@apply mbs-auto flex flex-col items-center gap-2 pt-3 text-xs;
+}
+
+/* =================================
+   LINK ROWS
+   ================================= */
+
+@utility footer-link-row {
+	@apply flex items-center justify-center gap-1;
+}
+
+@utility footer-link-dot {
+	@apply text-2xs;
+	color: var(--color-border);
+}
+
+@utility footer-link {
+	@apply inline-flex cursor-pointer items-center gap-1 rounded-sm border-none bg-transparent px-1.5 py-0.5 no-underline;
+	color: var(--color-text-subtle);
+	font-size: inherit;
+	transition:
+		color 0.15s ease,
+		background-color 0.15s ease;
+
+	&:hover {
+		color: var(--color-primary);
+		background-color: var(--color-hover);
+	}
+}
+
+@utility footer-link-icon {
+	@apply h-3.5 w-3.5 shrink-0;
+}
+
+/* =================================
+   LEGAL LINKS
+   ================================= */
+
+@utility footer-legal-section {
+	@apply mt-1 flex items-center gap-2;
+}
+
+@utility footer-legal-link {
+	@apply no-underline transition-colors duration-200;
+	color: var(--color-text-subtle);
+
+	&:hover {
+		color: var(--color-primary);
+	}
+}
+
+@utility footer-legal-divider {
+	color: var(--color-border);
+}
+
+/* =================================
+   CREATOR CREDIT
+   ================================= */
+
+@utility footer-credit {
+	@apply text-2xs m-0 mt-1;
+	color: var(--color-text-subtle);
+}

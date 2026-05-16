@@ -1,8 +1,7 @@
 import { defineConfig } from 'wxt';
 import tailwindcss from '@tailwindcss/vite';
 
-// Determine API domain based on build mode
-const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('dev');
+const isDev = process.env['NODE_ENV'] === 'development' || process.argv.includes('dev');
 const apiDomain = isDev ? 'roscoe-dev.rotector.com' : 'roscoe.rotector.com';
 
 // See https://wxt.dev/api/config.html
@@ -35,50 +34,51 @@ export default defineConfig({
 		},
 		server: {
 			watch: {
-				usePolling: true,
-				interval: 1000,
-				ignored: [
-					'**/node_modules/**',
-					'**/.git/**',
-					'**/dist/**',
-					'**/.wxt/**',
-					'**/.output/**',
-					'**/bun.lock',
-					'**/.env',
-					'**/.env.example',
-					'**/web-ext.config.ts',
-					'**/*.md',
-					'**/docs/**',
-					'**/assets/**'
-				]
+				usePolling: process.env['WXT_USE_POLLING'] === '1',
+				...(process.env['WXT_USE_POLLING'] === '1' ? { interval: 1000 } : {}),
+				ignored: ['**/.git/**', '**/.output/**', '**/.wxt/**', '**/bun.lock', '**/docs/**']
 			}
 		}
 	}),
-	manifest: ({ browser }) => ({
-		name: '__MSG_extensionName__',
-		description: '__MSG_extensionDescription__',
-		default_locale: 'en',
-		version: '2.15.1',
-		permissions: ['storage', 'notifications'],
-		host_permissions: [`https://${apiDomain}/*`],
-		optional_host_permissions: ['https://*/*', 'https://translate.googleapis.com/*'],
-		...(browser !== 'firefox' && {
-			externally_connectable: {
-				matches: [`https://${apiDomain}/*`]
-			}
-		}),
-		web_accessible_resources: [
-			{
-				resources: ['assets/*', 'icon/*', 'locales/*/*', 'content-scripts/content.css'],
-				matches: ['https://*.roblox.com/*']
-			}
-		],
-		...(browser === 'firefox' && {
-			browser_specific_settings: {
-				gecko: {
-					id: 'rotector@jaxron.me'
+	manifest: ({ browser, manifestVersion }) => {
+		const optionalHosts = ['https://*/*', 'https://translate.googleapis.com/*'];
+		const robloxFetch = browser === 'firefox' ? ['https://*.roblox.com/*'] : [];
+		return {
+			name: '__MSG_extensionName__',
+			description: '__MSG_extensionDescription__',
+			default_locale: 'en',
+			version: '2.17.0',
+			minimum_chrome_version: '128',
+			permissions: ['storage', 'notifications', ...robloxFetch],
+			host_permissions: [`https://${apiDomain}/*`, 'https://cdn.rotector.com/*'],
+			...(manifestVersion === 2
+				? { optional_permissions: optionalHosts }
+				: { optional_host_permissions: optionalHosts }),
+			...(browser !== 'firefox' && {
+				externally_connectable: {
+					matches: [`https://${apiDomain}/*`]
 				}
-			}
-		})
-	})
+			}),
+			web_accessible_resources: [
+				{
+					resources: [
+						'assets/*',
+						'icon/*',
+						'locales/*/*',
+						'fonts/*',
+						'content-scripts/content.css'
+					],
+					matches: ['https://*.roblox.com/*']
+				}
+			],
+			...(browser === 'firefox' && {
+				browser_specific_settings: {
+					gecko: {
+						id: 'rotector@jaxron.me',
+						strict_min_version: '129.0'
+					}
+				}
+			})
+		};
+	}
 });

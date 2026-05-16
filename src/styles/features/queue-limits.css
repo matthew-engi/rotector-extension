@@ -1,0 +1,60 @@
+/* =================================
+   QUEUE RATE LIMITS DISPLAY
+   ================================= */
+
+@utility rate-limits-section {
+	@apply flex flex-col gap-2 py-1;
+}
+
+@utility rate-limits-head {
+	@apply flex items-baseline justify-between;
+}
+
+@utility rate-limits-reset {
+	@apply text-xs-plus;
+	color: var(--color-text-tertiary);
+}
+
+@utility rate-limits-row {
+	@apply flex flex-col gap-1 pt-1;
+}
+
+@utility rate-limits-label {
+	@apply flex items-baseline justify-between text-xs;
+	color: var(--color-text);
+}
+
+@utility rate-limits-count {
+	color: var(--color-text-subtle);
+}
+
+@utility rate-limits-bar {
+	@apply overflow-hidden rounded-full inline-full;
+	height: 4px;
+	background-color: var(--color-bg-tertiary);
+}
+
+@utility rate-limits-bar-fill {
+	@apply rounded-full block-full;
+	background-color: var(--color-primary);
+	transition: width 0.3s ease;
+}
+
+@utility rate-limits-loading {
+	@apply py-2 text-xs;
+	color: var(--color-text-subtle);
+}
+
+@utility rate-limits-error {
+	@apply flex items-center gap-2 py-2 text-xs;
+	color: var(--color-error);
+}
+
+@utility rate-limits-retry {
+	@apply cursor-pointer border-none bg-transparent text-xs font-medium underline;
+	color: var(--color-primary);
+
+	&:hover {
+		color: var(--color-primary-hover);
+	}
+}

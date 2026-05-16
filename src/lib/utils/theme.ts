@@ -1,11 +1,10 @@
 import { derived, get, writable } from 'svelte/store';
-import { logger } from './logger';
+import { logger } from './logging/logger';
+import { getStorage, setStorage, subscribeStorageKey } from './storage';
 import { settings, updateSetting } from '../stores/settings';
+import { STORAGE_KEYS } from '../types/constants';
 import { SETTINGS_KEYS, type Theme } from '../types/settings';
 
-/**
- * Theme management utility with reactive Svelte stores and Roblox theme detection
- */
 class ThemeManager {
 	private readonly _systemTheme = writable<'light' | 'dark'>('light');
 	public readonly systemTheme = { subscribe: this._systemTheme.subscribe };
@@ -20,20 +19,13 @@ class ThemeManager {
 			if (userTheme === 'light') return 'light';
 			if (userTheme === 'dark') return 'dark';
 
-			// Auto mode
-			if (this.isRobloxPage()) {
-				// Content script: use Roblox theme
-				return robloxTheme;
-			} else {
-				// Popup: use stored content script theme if available, otherwise system theme
-				return contentScriptTheme ?? systemTheme;
-			}
+			return this.isRobloxPage() ? robloxTheme : (contentScriptTheme ?? systemTheme);
 		}
 	);
 	private mediaQuery: MediaQueryList | null = null;
 	private mediaQueryHandler: ((e: MediaQueryListEvent) => void) | null = null;
 	private robloxObserver: MutationObserver | null = null;
-	private readonly portalContainers: Set<HTMLElement> = new Set();
+	private readonly portalContainers = new Set<HTMLElement>();
 
 	constructor() {
 		this.initializeSystemThemeDetection();
@@ -41,13 +33,12 @@ class ThemeManager {
 		this.setupThemePersistence();
 	}
 
-	// Initializes Roblox theme detection
+	// No-op off Roblox so popup and other contexts skip the body class observer
 	initializeRobloxTheme(): void {
 		if (!this.isRobloxPage()) return;
 		this.setupRobloxThemeObserver();
 	}
 
-	// Sets the theme preference
 	async setTheme(theme: Theme): Promise<void> {
 		try {
 			await updateSetting(SETTINGS_KEYS.THEME, theme);
@@ -57,34 +48,31 @@ class ThemeManager {
 		}
 	}
 
-	// Gets the current effective theme
 	getCurrentTheme(): 'light' | 'dark' {
 		return get(this.effectiveTheme);
 	}
 
-	// Register a portal container to receive theme updates
+	// Tracks the container and stamps data-theme so shadow-root portals follow theme changes
 	registerPortalContainer(container: HTMLElement): void {
 		this.portalContainers.add(container);
 
 		const currentTheme = this.getCurrentTheme();
-		container.setAttribute('data-theme', currentTheme);
+		container.dataset['theme'] = currentTheme;
 		logger.debug('Portal container registered for theme updates');
 	}
 
-	// Get the stored content script theme for popup synchronization
 	async getContentScriptTheme(): Promise<'light' | 'dark' | null> {
 		try {
-			const result = await browser.storage.local.get(['rotector-content-theme']);
-			return (result['rotector-content-theme'] as 'light' | 'dark' | null) ?? null;
+			return await getStorage<'light' | 'dark' | null>('local', STORAGE_KEYS.CONTENT_THEME, null);
 		} catch (error) {
 			logger.error('Failed to get content script theme:', error);
 			return null;
 		}
 	}
 
-	// Initialize popup theme synchronization with content script
+	// Mirrors content-script theme into the popup via local storage so colors stay aligned
 	async initializePopupThemeSync(): Promise<void> {
-		if (this.isRobloxPage()) return; // Only for popup context
+		if (this.isRobloxPage()) return;
 
 		try {
 			const storedTheme = await this.getContentScriptTheme();
@@ -93,29 +81,26 @@ class ThemeManager {
 				logger.debug(`Popup initialized with content script theme: ${storedTheme}`);
 			}
 
-			// Listen for changes to content script theme
-			browser.storage.onChanged.addListener((changes, namespace) => {
-				if (namespace === 'local' && changes['rotector-content-theme']) {
-					const newTheme = changes['rotector-content-theme'].newValue as 'light' | 'dark' | null;
+			subscribeStorageKey<'light' | 'dark' | null>(
+				'local',
+				STORAGE_KEYS.CONTENT_THEME,
+				(newTheme) => {
 					if (newTheme) {
 						this._contentScriptTheme.set(newTheme);
 						logger.debug(`Popup synced with content script theme change: ${newTheme}`);
 					}
 				}
-			});
+			);
 		} catch (error) {
 			logger.error('Failed to initialize popup theme sync:', error);
 		}
 	}
 
-	// Cleans up event listeners and observers
 	cleanup(): void {
-		// Cleanup system theme detection
-		if (this.mediaQuery && this.mediaQueryHandler && this.mediaQuery.removeEventListener) {
+		if (this.mediaQuery && this.mediaQueryHandler) {
 			this.mediaQuery.removeEventListener('change', this.mediaQueryHandler);
 		}
 
-		// Cleanup Roblox theme detection
 		if (this.robloxObserver) {
 			this.robloxObserver.disconnect();
 			this.robloxObserver = null;
@@ -124,26 +109,21 @@ class ThemeManager {
 		logger.debug('Theme manager cleaned up');
 	}
 
-	// Check if current page is a Roblox page
 	private isRobloxPage(): boolean {
-		return window.location.hostname.includes('roblox.com');
+		return globalThis.location.hostname.includes('roblox.com');
 	}
 
-	// Initializes system theme detection using prefers-color-scheme
 	private initializeSystemThemeDetection(): void {
 		try {
-			this.mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+			this.mediaQuery = globalThis.matchMedia('(prefers-color-scheme: dark)');
 			this.updateSystemTheme();
 
-			// Set up listener for system theme changes
 			this.mediaQueryHandler = (e: MediaQueryListEvent) => {
 				this.updateSystemTheme();
 				logger.debug(`System theme changed to: ${e.matches ? 'dark' : 'light'}`);
 			};
 
-			if (this.mediaQuery.addEventListener) {
-				this.mediaQuery.addEventListener('change', this.mediaQueryHandler);
-			}
+			this.mediaQuery.addEventListener('change', this.mediaQueryHandler);
 
 			logger.debug('System theme detection initialized');
 		} catch (error) {
@@ -152,13 +132,10 @@ class ThemeManager {
 		}
 	}
 
-	// Sets up the MutationObserver for Roblox body class changes
 	private setupRobloxThemeObserver(): void {
 		try {
-			// Initial detection
 			this.updateRobloxTheme();
 
-			// Set up observer for Roblox theme changes
 			this.robloxObserver = new MutationObserver((mutations) => {
 				for (const mutation of mutations) {
 					if (
@@ -184,7 +161,6 @@ class ThemeManager {
 		}
 	}
 
-	// Updates the system theme based on media query
 	private updateSystemTheme(): void {
 		if (!this.mediaQuery) return;
 
@@ -192,60 +168,53 @@ class ThemeManager {
 		this._systemTheme.set(isDark ? 'dark' : 'light');
 	}
 
-	// Updates the Roblox theme based on body class
 	private updateRobloxTheme(): void {
 		const isDark = document.body.classList.contains('dark-theme');
 		this._robloxTheme.set(isDark ? 'dark' : 'light');
 		logger.debug(`Roblox theme updated to: ${isDark ? 'dark' : 'light'}`);
 	}
 
-	// Sets up automatic theme application to document
 	private setupThemeApplication(): void {
 		this.effectiveTheme.subscribe((theme) => {
 			this.applyThemeToDocument(theme);
 		});
 	}
 
-	// Sets up theme persistence for content script synchronization
 	private setupThemePersistence(): void {
 		this.effectiveTheme.subscribe((theme) => {
 			if (this.isRobloxPage()) {
-				this.storeContentScriptTheme(theme).catch((err) => {
-					logger.error('Failed to store content script theme:', err);
+				this.storeContentScriptTheme(theme).catch((error: unknown) => {
+					logger.error('Failed to store content script theme:', error);
 				});
 			}
 		});
 	}
 
-	// Applies theme to the document and all registered portal containers
 	private applyThemeToDocument(theme: 'light' | 'dark'): void {
 		try {
 			const { documentElement } = document;
 
-			// Set data attribute for CSS targeting
-			documentElement.setAttribute('data-theme', theme);
+			documentElement.dataset['theme'] = theme;
 
-			// Apply theme to all registered portal containers
-			this.portalContainers.forEach((portal) => {
+			for (const portal of this.portalContainers) {
 				try {
-					portal.setAttribute('data-theme', theme);
+					portal.dataset['theme'] = theme;
 				} catch (error) {
 					logger.error('Failed to apply theme to portal container:', error);
 				}
-			});
+			}
 
 			logger.debug(
-				`Applied ${theme} theme to document and ${this.portalContainers.size} portal containers`
+				`Applied ${theme} theme to document and ${String(this.portalContainers.size)} portal containers`
 			);
 		} catch (error) {
 			logger.error('Failed to apply theme to document:', error);
 		}
 	}
 
-	// Store the content script's effective theme for popup synchronization
 	private async storeContentScriptTheme(theme: 'light' | 'dark'): Promise<void> {
 		try {
-			await browser.storage.local.set({ 'rotector-content-theme': theme });
+			await setStorage('local', STORAGE_KEYS.CONTENT_THEME, theme);
 			this._contentScriptTheme.set(theme);
 			logger.debug(`Stored content script theme: ${theme}`);
 		} catch (error) {
@@ -254,13 +223,4 @@ class ThemeManager {
 	}
 }
 
-// Export singleton instance
 export const themeManager = new ThemeManager();
-
-// Export portal management functions
-export const registerPortalContainer = (container: HTMLElement) => {
-	themeManager.registerPortalContainer(container);
-};
-
-// Export popup theme sync function
-export const initializePopupThemeSync = async () => themeManager.initializePopupThemeSync();

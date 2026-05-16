@@ -1,0 +1,90 @@
+/* =================================
+   CONTAINER
+   ================================= */
+
+@utility rotector-scan-host {
+	@apply inline-flex items-center self-baseline align-middle proportional-nums!;
+}
+
+/* =================================
+   PROGRESS BAR
+   ================================= */
+
+@utility rotector-scan-progress-wrapper {
+	@apply ml-3! inline-flex items-center gap-1.5 align-middle;
+
+	& img {
+		@apply shrink-0;
+	}
+}
+
+@utility rotector-scan-progress {
+	@apply inline-flex items-center overflow-hidden rounded-full align-middle;
+	width: 120px;
+	height: 16px;
+	background-color: var(--color-bg-tertiary);
+}
+
+@utility rotector-scan-progress-fill {
+	@apply rounded-full block-full;
+	background-color: var(--color-primary);
+}
+
+@utility rotector-scan-progress-text {
+	@apply ml-1.5! align-middle text-[12px]! font-medium! whitespace-nowrap;
+	color: var(--color-text-subtle);
+}
+
+/* =================================
+   RESULTS BAR
+   ================================= */
+
+@utility rotector-scan-results {
+	@apply ml-3! inline-flex items-center gap-2 align-middle;
+
+	& img {
+		@apply shrink-0;
+	}
+}
+
+@utility rotector-scan-bar {
+	@apply inline-flex overflow-hidden rounded-full align-middle;
+	width: 100px;
+	height: 14px;
+}
+
+@utility rotector-scan-segment {
+	@apply block-full;
+	min-width: 2px;
+}
+
+@utility rotector-scan-chips {
+	@apply inline-flex items-center gap-2 align-middle;
+}
+
+@utility rotector-scan-chip {
+	@apply inline-flex items-center gap-0.5 text-[12px]! font-semibold! whitespace-nowrap;
+}
+
+@utility rotector-scan-chip-empty {
+	@apply font-medium!;
+	color: var(--color-text-subtle);
+}
+
+/* =================================
+   ERROR STATE
+   ================================= */
+
+@utility rotector-scan-error {
+	@apply ml-3! inline-flex items-center gap-1.5 align-middle text-[12px]!;
+	color: var(--color-status-error);
+}
+
+@utility rotector-scan-retry {
+	@apply cursor-pointer border-0 bg-transparent p-0 text-[12px]! font-medium! underline underline-offset-2;
+	color: var(--color-status-error);
+
+	&:hover {
+		@apply font-semibold!;
+	}
+}

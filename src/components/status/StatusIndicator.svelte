@@ -1,35 +1,47 @@
 <script lang="ts">
-	import type { GroupStatus, UserStatus } from '@/lib/types/api';
+	import { _ } from 'svelte-i18n';
+	import type { EntityStatus } from '@/lib/types/api';
 	import type { CombinedStatus } from '@/lib/types/custom-api';
 	import { ENTITY_TYPES } from '@/lib/types/constants';
-	import { logger } from '@/lib/utils/logger';
-	import { sanitizeEntityId } from '@/lib/utils/sanitizer';
-	import { getStatusConfig } from '@/lib/utils/status-config';
-	import { groupStatusService, userStatusService } from '@/lib/services/entity-status-service';
-	import { countCustomApiFlags, ROTECTOR_API_ID } from '@/lib/services/unified-query-service';
+	import { logger } from '@/lib/utils/logging/logger';
+	import { sanitizeEntityId } from '@/lib/utils/dom/sanitizer';
+	import { getStatusConfig } from '@/lib/utils/status/status-config';
+	import CanvasText from '@/components/ui/CanvasText.svelte';
+	import { groupStatusService, userStatusService } from '@/lib/services/rotector/entity-status';
+	import { countCustomApiFlags } from '@/lib/services/rotector/unified-query';
+	import { ROTECTOR_API_ID } from '@/lib/stores/custom-apis';
 	import { restrictedAccessStore } from '@/lib/stores/restricted-access';
 	import { getLoggedInUserId } from '@/lib/utils/client-id';
+	import { openOutfitViewer } from '@/lib/stores/outfit-viewer';
+	import { reportFirstDetectionIfEligible } from '@/lib/stores/first-detection';
+	import {
+		getBadgeStackClasses,
+		getRotectorMembershipBadge,
+		getRotectorOutfitEvidence
+	} from '@/lib/utils/status/status-projection';
 	import { Flag, Hourglass } from '@lucide/svelte';
-	import StatusIcon from '@/lib/components/icons/StatusIcon.svelte';
+	import StatusIcon from '@/components/icons/StatusIcon.svelte';
 
+	import MembershipIcon from '@/components/ui/membership/MembershipIcon.svelte';
+	import { designKey, tierOf } from '@/lib/utils/membership-designs';
 	import Tooltip from './Tooltip.svelte';
 	import OverlayPortal from '@/components/overlay/OverlayPortal.svelte';
-
-	type EntityStatus = UserStatus | GroupStatus;
 
 	interface Props {
 		entityId: string;
 		entityType: 'user' | 'group';
-		entityStatus?: CombinedStatus | null;
-		error?: string | null;
-		showText?: boolean;
-		skipAutoFetch?: boolean;
-		onClick?: (entityId: string) => void;
-		onQueue?: (entityId: string, isReprocess?: boolean, status?: EntityStatus | null) => void;
-		onViewOutfits?: () => void;
-		userUsername?: string;
-		userDisplayName?: string;
-		userAvatarUrl?: string;
+		entityStatus?: CombinedStatus | null | undefined;
+		error?: string | null | undefined;
+		showText?: boolean | undefined;
+		skipAutoFetch?: boolean | undefined;
+		suppressMembershipBadge?: boolean | undefined;
+		onClick?: ((entityId: string) => void) | undefined;
+		onQueue?:
+			| ((entityId: string, isReprocess?: boolean, status?: EntityStatus | null) => void)
+			| undefined;
+		userUsername?: string | undefined;
+		userDisplayName?: string | undefined;
+		userAvatarUrl?: string | undefined;
 	}
 
 	let {
@@ -39,15 +51,14 @@
 		error = null,
 		showText = true,
 		skipAutoFetch = false,
+		suppressMembershipBadge = false,
 		onClick,
 		onQueue,
-		onViewOutfits,
 		userUsername,
 		userDisplayName,
 		userAvatarUrl
 	}: Props = $props();
 
-	// Local state
 	let container = $state<HTMLElement>();
 	let showPreviewTooltip = $state(false);
 	let showExpandedTooltip = $state(false);
@@ -57,18 +68,14 @@
 	let cachedStatus = $state<EntityStatus | null>(null);
 	let hoverTimeout = $state<ReturnType<typeof setTimeout> | null>(null);
 
-	// Get the appropriate service based on entity type
 	const statusService = $derived(
 		entityType === ENTITY_TYPES.USER ? userStatusService : groupStatusService
 	);
 
-	// Computed values
 	const sanitizedEntityId = $derived(sanitizeEntityId(entityId) || '');
 
-	// Check if access is restricted
 	const isRestricted = $derived($restrictedAccessStore.isRestricted);
 
-	// Check if this is a self-lookup
 	const isSelfLookup = $derived.by(() => {
 		if (entityType !== ENTITY_TYPES.USER) return false;
 		const clientId = getLoggedInUserId();
@@ -78,7 +85,7 @@
 
 	const statusConfig = $derived.by(() => {
 		if (!entityStatus) {
-			return getStatusConfig(cachedStatus, cachedStatus, true, null, entityType);
+			return getStatusConfig(cachedStatus, cachedStatus, !cachedStatus, null, entityType);
 		}
 
 		const rotector = entityStatus.get(ROTECTOR_API_ID);
@@ -96,62 +103,60 @@
 		);
 	});
 
-	const isGroup = $derived(entityType === 'group');
+	const isGroup = $derived(entityType === ENTITY_TYPES.GROUP);
 
-	// Count custom API flags
-	const customApiFlagCount = $derived.by(() => {
-		if (!entityStatus) return 0;
-		return countCustomApiFlags(entityStatus);
-	});
+	const flaggedOutfits = $derived(isGroup ? null : getRotectorOutfitEvidence(entityStatus));
 
-	// Compute visible badges in priority order
-	const visibleBadges = $derived.by(() => {
-		const badges: string[] = [];
-		if (!isGroup && statusConfig.isReportable) badges.push('reportable');
-		if (statusConfig.isQueued) badges.push('queue');
-		if (customApiFlagCount > 0) badges.push('integration');
-		return badges;
-	});
+	const customApiFlagCount = $derived(entityStatus ? countCustomApiFlags(entityStatus) : 0);
 
-	// Compute stack classes for each badge type
-	const badgeStackClasses = $derived.by(() => {
-		const classes: Record<string, string> = {};
-		visibleBadges.forEach((badge, index) => {
-			classes[badge] = `badge-stack-${index + 1}`;
-		});
-		return classes;
-	});
+	const membershipBadge = $derived(
+		!isGroup && !suppressMembershipBadge ? getRotectorMembershipBadge(entityStatus) : null
+	);
+	const membershipTier = $derived(membershipBadge ? tierOf(membershipBadge.tier) : null);
+	const membershipIconKey = $derived(
+		membershipBadge && membershipTier
+			? designKey(membershipBadge.iconDesign, membershipTier, 'icon')
+			: null
+	);
 
-	// Handle click to show expanded tooltip
+	const badgeStackClasses = $derived(
+		getBadgeStackClasses({
+			isGroup,
+			isReportable: statusConfig.isReportable,
+			isQueued: statusConfig.isQueued,
+			customApiFlagCount,
+			hasMembership: membershipBadge !== null
+		})
+	);
+
+	const rotector = $derived(entityStatus?.get(ROTECTOR_API_ID));
+	const rotectorLoading = $derived(rotector?.loading ?? false);
+	const hasData = $derived(!!(rotector?.data ?? cachedStatus));
+	const tooltipBlocked = $derived(
+		rotectorLoading || (!hasData && !error && !isRestricted && !isSelfLookup)
+	);
+
 	function handleClick(event: MouseEvent | KeyboardEvent) {
 		event.preventDefault();
 		event.stopPropagation();
 
-		const rotector = entityStatus?.get(ROTECTOR_API_ID);
-		const rotectorLoading = rotector?.loading ?? false;
-		const hasData = rotector?.data || cachedStatus;
-
-		if (rotectorLoading || (!hasData && !error && !isRestricted && !isSelfLookup)) return;
+		if (tooltipBlocked) return;
 
 		logger.userAction('status_indicator_clicked', { entityId: sanitizedEntityId, entityType });
 
-		if (onClick) {
-			onClick(sanitizedEntityId);
-		}
+		onClick?.(sanitizedEntityId);
 
 		showPreviewTooltip = false;
 		showExpandedTooltip = true;
 		showBadgeExpansion = false;
 	}
 
-	// Handle keyboard events
 	function handleKeydown(event: KeyboardEvent) {
 		if (event.key === 'Enter' || event.key === ' ') {
 			handleClick(event);
 		}
 	}
 
-	// Clear hover timeout
 	function clearHoverTimeout() {
 		if (hoverTimeout) {
 			clearTimeout(hoverTimeout);
@@ -159,22 +164,16 @@
 		}
 	}
 
-	// Handle mouse enter for preview tooltip
+	// If the indicator unmounts within the 150ms hover debounce, clear the pending
+	// timeout so it doesn't fire post-unmount and write to dead state
+	$effect(() => clearHoverTimeout);
+
 	function handleMouseEnter() {
 		if (!showExpandedTooltip) {
 			showBadgeExpansion = true;
 		}
 
-		const rotector = entityStatus?.get(ROTECTOR_API_ID);
-		const rotectorLoading = rotector?.loading ?? false;
-		const hasData = rotector?.data || cachedStatus;
-
-		if (
-			rotectorLoading ||
-			(!hasData && !error && !isRestricted && !isSelfLookup) ||
-			showExpandedTooltip
-		)
-			return;
+		if (tooltipBlocked || showExpandedTooltip) return;
 
 		clearHoverTimeout();
 
@@ -185,7 +184,6 @@
 		}, 150);
 	}
 
-	// Handle mouse leave
 	function handleMouseLeave() {
 		clearHoverTimeout();
 
@@ -197,95 +195,53 @@
 		});
 	}
 
-	// Handle tooltip mouse enter
 	function handleTooltipMouseEnter() {
 		isTooltipHovered = true;
 	}
 
-	// Handle tooltip mouse leave
 	function handleTooltipMouseLeave() {
 		isTooltipHovered = false;
 		showPreviewTooltip = false;
 		showBadgeExpansion = false;
 	}
 
-	// Handle queue action
 	function handleQueue(isReprocess = false) {
-		if (onQueue) {
-			const rotector = entityStatus?.get(ROTECTOR_API_ID);
-			const tooltipStatus = rotector?.data ?? cachedStatus;
-			onQueue(sanitizedEntityId, isReprocess, tooltipStatus);
-		}
+		onQueue?.(sanitizedEntityId, isReprocess, rotector?.data ?? cachedStatus);
 	}
 
-	// Handle expanded tooltip actions
 	function handleExpandedQueue(isReprocess = false, tooltipStatus: EntityStatus | null = null) {
-		if (onQueue) {
-			onQueue(sanitizedEntityId, isReprocess, tooltipStatus);
-		}
+		onQueue?.(sanitizedEntityId, isReprocess, tooltipStatus);
 		showExpandedTooltip = false;
 	}
 
-	// Close expanded tooltip
 	function closeExpandedTooltip() {
 		showExpandedTooltip = false;
 		showBadgeExpansion = false;
 	}
 
-	// Fetch and cache user status
+	function handleViewOutfits() {
+		openOutfitViewer(entityId, flaggedOutfits ?? []);
+	}
+
 	$effect(() => {
 		if (!sanitizedEntityId) return;
-
-		// Skip fetching if access is restricted
 		if (isRestricted && !isSelfLookup) return;
+		if (rotector?.data || rotectorLoading || error || skipAutoFetch) return;
 
-		const rotector = entityStatus?.get(ROTECTOR_API_ID);
-		const rotectorLoading = rotector?.loading ?? false;
-		const hasRotectorData = rotector?.data;
-
-		// If no status provided and not loading, check cache or fetch
-		if (!hasRotectorData && !rotectorLoading && !error && !skipAutoFetch) {
-			const cached = statusService.getCachedStatus(sanitizedEntityId);
-			if (cached) {
-				cachedStatus = cached;
-				logger.debug('StatusIndicator: using cached status', {
-					entityId: sanitizedEntityId,
-					entityType,
-					flagType: cached.flagType
-				});
-			} else {
-				// Fetch status asynchronously
-				statusService
-					.getStatus(sanitizedEntityId)
-					.then((result) => {
-						if (result) {
-							cachedStatus = result;
-							logger.debug('StatusIndicator: fetched new status', {
-								entityId: sanitizedEntityId,
-								entityType,
-								flagType: result.flagType
-							});
-						}
-					})
-					.catch((err: unknown) => {
-						logger.error('StatusIndicator: failed to fetch status', {
-							entityId: sanitizedEntityId,
-							entityType,
-							error: err
-						});
-					});
-			}
-		}
+		void statusService.getOrFetch(sanitizedEntityId).then((result) => {
+			if (result) cachedStatus = result;
+		});
 	});
 
-	// Setup hover handlers
 	$effect(() => {
-		return () => {
-			clearHoverTimeout();
-		};
+		reportFirstDetectionIfEligible({
+			entityType,
+			userId: sanitizedEntityId,
+			isSelfLookup,
+			flagType: (rotector?.data ?? cachedStatus)?.flagType
+		});
 	});
 
-	// Listen for escape key to close tooltips
 	$effect(() => {
 		const handleEscape = (event: KeyboardEvent) => {
 			if (event.key === 'Escape') {
@@ -311,8 +267,14 @@
 	bind:this={container}
 	class="status-container"
 	class:badge-expanded={showBadgeExpansion}
-	aria-label={`Status: ${statusConfig.textContent}. Click for details.`}
-	data-status-flag={entityStatus?.get(ROTECTOR_API_ID)?.data?.flagType}
+	aria-label={$_('status_indicator_aria_label', {
+		values: {
+			0: statusConfig.categoryLabel
+				? `${statusConfig.textContent}, ${statusConfig.categoryLabel}`
+				: statusConfig.textContent
+		}
+	})}
+	data-status-flag={rotector?.data?.flagType}
 	data-user-id={sanitizedEntityId}
 	onclick={handleClick}
 	onkeydown={handleKeydown}
@@ -321,7 +283,6 @@
 	title={undefined}
 	type="button"
 >
-	<!-- Status Icon -->
 	<span
 		class="status-icon-wrapper"
 		class:animate-spin-loading={statusConfig.iconName === 'loading'}
@@ -333,36 +294,47 @@
 		/>
 	</span>
 
-	<!-- Badge Container -->
 	<span class="badge-container">
 		{#if !isGroup && statusConfig.isReportable}
-			<span class="reportable-badge {badgeStackClasses.reportable}">
+			<span class="reportable-badge {badgeStackClasses['reportable']}">
 				<Flag size={10} strokeWidth={2.5} />
 			</span>
 		{/if}
 
 		{#if statusConfig.isQueued}
-			<span class="queue-badge {badgeStackClasses.queue}">
+			<span class="queue-badge {badgeStackClasses['queue']}">
 				<Hourglass size={8} strokeWidth={2.5} />
 			</span>
 		{/if}
 
 		{#if customApiFlagCount > 0}
-			<span class="integration-badge {badgeStackClasses.integration}">
+			<span class="integration-badge {badgeStackClasses['integration']}">
 				{customApiFlagCount}
+			</span>
+		{/if}
+
+		{#if membershipBadge && membershipIconKey}
+			<span class="membership-stack-badge tier-{membershipTier} {badgeStackClasses['membership']}">
+				<MembershipIcon iconKey={membershipIconKey} size={10} />
 			</span>
 		{/if}
 	</span>
 
-	<!-- Status Text -->
 	{#if showText}
 		<span class={statusConfig.textClass}>
-			{statusConfig.textContent}
+			<CanvasText text={statusConfig.textContent} />
+			{#if statusConfig.categoryLabel}
+				<span class="status-text-category">
+					<CanvasText text="·" />
+				</span>
+				<span class="status-text-category">
+					<CanvasText text={statusConfig.categoryLabel} />
+				</span>
+			{/if}
 		</span>
 	{/if}
 </button>
 
-<!-- Preview Tooltip -->
 {#if showPreviewTooltip && container}
 	<OverlayPortal>
 		<Tooltip
@@ -378,7 +350,7 @@
 			onMouseEnter={handleTooltipMouseEnter}
 			onMouseLeave={handleTooltipMouseLeave}
 			onQueue={handleQueue}
-			{onViewOutfits}
+			onViewOutfits={isGroup ? undefined : handleViewOutfits}
 			{userAvatarUrl}
 			{userDisplayName}
 			userId={entityId}
@@ -388,7 +360,6 @@
 	</OverlayPortal>
 {/if}
 
-<!-- Expanded Tooltip -->
 {#if showExpandedTooltip && container}
 	<OverlayPortal>
 		<Tooltip
@@ -398,7 +369,7 @@
 			mode="expanded"
 			onClose={closeExpandedTooltip}
 			onQueue={handleExpandedQueue}
-			{onViewOutfits}
+			onViewOutfits={isGroup ? undefined : handleViewOutfits}
 			{userAvatarUrl}
 			{userDisplayName}
 			userId={entityId}

@@ -1,0 +1,23 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: scripts
+      glob: '**/*.{ts,js,svelte}'
+      run: bunx oxlint --fix {staged_files} && bunx eslint --cache --fix {staged_files} && bunx oxfmt {staged_files} && git add {staged_files}
+
+    - name: styles
+      glob: 'src/styles/**/*.css'
+      run: bunx stylelint --cache --fix {staged_files} && bunx oxfmt {staged_files} && git add {staged_files}
+
+    - name: other
+      glob: '**/*.{json,md,yml,yaml}'
+      run: bunx oxfmt {staged_files} && git add {staged_files}
+
+    - name: typecheck
+      glob: '**/*.{ts,svelte}'
+      run: bun run check
+
+commit-msg:
+  jobs:
+    - name: commitlint
+      run: bunx commitlint --edit {1}

@@ -1,48 +1,38 @@
 <script lang="ts">
+	import { LoaderCircle } from '@lucide/svelte';
+
 	interface Props {
 		checked: boolean;
 		disabled?: boolean;
+		loading?: boolean;
 		onchange: (checked: boolean) => void;
-		preventChange?: boolean;
 	}
 
-	let {
-		checked = $bindable(),
-		disabled = false,
-		onchange,
-		preventChange = false
-	}: Props = $props();
+	let { checked, disabled = false, loading = false, onchange }: Props = $props();
 
 	function handleChange(event: Event) {
 		if (!(event.target instanceof HTMLInputElement)) {
 			return;
 		}
-		const target = event.target;
-
-		if (preventChange) {
-			target.checked = checked;
-			onchange(!checked);
-			return;
-		}
-
-		checked = target.checked;
-		onchange(checked);
+		onchange(event.target.checked);
 	}
 </script>
 
-<label class="toggle-container">
+<label class="toggle-container" class:loading aria-busy={loading}>
 	<input
-		name="toggle"
-		class="
-        peer size-0 opacity-0
-        focus:outline-none
-      "
+		class="peer size-0 opacity-0 focus:outline-none"
+		aria-checked={checked}
 		{checked}
-		{disabled}
+		disabled={disabled || loading}
 		onchange={handleChange}
+		role="switch"
 		type="checkbox"
 	/>
-	<span class="toggle-switch" class:checked class:disabled>
-		<span class="toggle-handle" class:checked class:disabled></span>
+	<span class="toggle-switch" class:checked class:disabled class:loading>
+		<span class="toggle-handle" class:checked class:disabled class:loading>
+			{#if loading}
+				<LoaderCircle class="toggle-spinner" size={10} />
+			{/if}
+		</span>
 	</span>
 </label>
